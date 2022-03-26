@@ -1,4 +1,4 @@
-import molann.utils as utils
+from molann.utils import create_sequential_nn
 import molann.feature as feature
 import cv2 as cv
 import itertools 
@@ -10,6 +10,38 @@ import pandas as pd
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 import os
+
+class ColVar(torch.nn.Module):
+    def __init__(self, preprocessing_layer, layer):
+        super(ColVar, self).__init__()
+        self.preprocessing_layer = preprocessing_layer
+        self.layer = layer
+    def forward(self, inp):
+        return self.layer(self.preprocessing_layer(inp))
+
+# autoencoder class 
+class AutoEncoder(torch.nn.Module):
+    def __init__(self, e_layer_dims, d_layer_dims, activation=torch.nn.Tanh()):
+        super(AutoEncoder, self).__init__()
+        self.encoder = create_sequential_nn(e_layer_dims, activation)
+        self.decoder = create_sequential_nn(d_layer_dims, activation)
+
+    def forward(self, inp):
+        """TBA
+        """
+        return self.decoder(self.encoder(inp))
+
+# eigenfunction class
+class EigenFunction(torch.nn.Module):
+    def __init__(self, layer_dims, k, activation=torch.nn.Tanh()):
+        super(EigenFunction, self).__init__()
+        assert layer_dims[-1] == 1, "each eigenfunction must be one-dimensional"
+
+        self.eigen_funcs = torch.nn.ModuleList([create_sequential_nn(layer_dims, activation) for idx in range(k)])
+
+    def forward(self, inp):
+        """TBA"""
+        return torch.cat([nn(inp) for nn in self.eigen_funcs], dim=1)
 
 class TrainingTask(object):
     """class for a training task
@@ -150,7 +182,7 @@ class AutoEncoderTask(TrainingTask):
         d_layer_dims = [self.k] + args.d_layer_dims + [feature_dim]
 
         # define autoencoder
-        self.model = utils.AutoEncoder(e_layer_dims, d_layer_dims, args.activation()).to(device=self.device)
+        self.model = AutoEncoder(e_layer_dims, d_layer_dims, args.activation()).to(device=self.device)
         # print the model
         print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(feature_dim, self.k), self.model)
 
@@ -171,7 +203,7 @@ class AutoEncoderTask(TrainingTask):
         print ( '\nshape of trajectory data array:\n {}'.format(self.feature_traj.shape), flush=True )
 
     def colvar_model(self):
-        return utils.ColVar(self.preprocessing_layer, self.model.encoder)
+        return ColVar(self.preprocessing_layer, self.model.encoder)
 
     def weighted_MSE_loss(self, X, weight):
         # Forward pass to get output
@@ -285,7 +317,7 @@ class EigenFunctionTask(TrainingTask):
 
         layer_dims = [feature_dim] + args.layer_dims + [1]
 
-        self.model = utils.EigenFunction(layer_dims, self.k, self.args.activation()).to(self.device)
+        self.model = EigenFunction(layer_dims, self.k, self.args.activation()).to(self.device)
 
         print ('\nEigenfunctions:\n', self.model, flush=True)
 
@@ -312,7 +344,7 @@ class EigenFunctionTask(TrainingTask):
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
     def colvar_model(self):
-        return utils.ColVar(self.preprocessing_layer, self.model)
+        return ColVar(self.preprocessing_layer, self.model)
 
     def cv_on_data(self, X):
         return self.model(X)[:,self.cvec]
