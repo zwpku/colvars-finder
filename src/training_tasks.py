@@ -1,4 +1,4 @@
-from molann.utils import create_sequential_nn
+import molann.ann as ann
 import molann.feature as feature
 import cv2 as cv
 import itertools 
@@ -11,20 +11,12 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 import os
 
-class ColVar(torch.nn.Module):
-    def __init__(self, preprocessing_layer, layer):
-        super(ColVar, self).__init__()
-        self.preprocessing_layer = preprocessing_layer
-        self.layer = layer
-    def forward(self, inp):
-        return self.layer(self.preprocessing_layer(inp))
-
 # autoencoder class 
 class AutoEncoder(torch.nn.Module):
     def __init__(self, e_layer_dims, d_layer_dims, activation=torch.nn.Tanh()):
         super(AutoEncoder, self).__init__()
-        self.encoder = create_sequential_nn(e_layer_dims, activation)
-        self.decoder = create_sequential_nn(d_layer_dims, activation)
+        self.encoder = ann.create_sequential_nn(e_layer_dims, activation)
+        self.decoder = ann.create_sequential_nn(d_layer_dims, activation)
 
     def forward(self, inp):
         """TBA
@@ -37,7 +29,7 @@ class EigenFunction(torch.nn.Module):
         super(EigenFunction, self).__init__()
         assert layer_dims[-1] == 1, "each eigenfunction must be one-dimensional"
 
-        self.eigen_funcs = torch.nn.ModuleList([create_sequential_nn(layer_dims, activation) for idx in range(k)])
+        self.eigen_funcs = torch.nn.ModuleList([ann.create_sequential_nn(layer_dims, activation) for idx in range(k)])
 
     def forward(self, inp):
         """TBA"""
@@ -109,11 +101,11 @@ class TrainingTask(object):
             align_atom_ids = self.traj_obj.u.select_atoms(self.args.align_selector).ids
             print ('\nAdd alignment to preprocessing layer.\naligning by atoms:')
             print (self.traj_obj.atoms_info.loc[self.traj_obj.atoms_info['id'].isin(align_atom_ids)][['id','name', 'type']], flush=True)
-            align = utils.Align(self.traj_obj.ref_pos, align_atom_ids)
+            align = ann.Align(self.traj_obj.ref_pos, align_atom_ids)
         else :
             align = torch.nn.Identity()
 
-        return utils.Preprocessing(feature_mapper, align)
+        return ann.PreprocessingANN(feature_mapper, align)
 
     def save_model(self, epoch=0):
 
@@ -203,7 +195,7 @@ class AutoEncoderTask(TrainingTask):
         print ( '\nshape of trajectory data array:\n {}'.format(self.feature_traj.shape), flush=True )
 
     def colvar_model(self):
-        return ColVar(self.preprocessing_layer, self.model.encoder)
+        return ann.MolANN(self.preprocessing_layer, self.model.encoder)
 
     def weighted_MSE_loss(self, X, weight):
         # Forward pass to get output
@@ -344,7 +336,7 @@ class EigenFunctionTask(TrainingTask):
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
     def colvar_model(self):
-        return ColVar(self.preprocessing_layer, self.model)
+        return MolANN(self.preprocessing_layer, self.model)
 
     def cv_on_data(self, X):
         return self.model(X)[:,self.cvec]
