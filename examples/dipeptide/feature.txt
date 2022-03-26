@@ -1,0 +1,25 @@
+# This file defines features. They will be used in
+# (1) defining the preprocessing layer of neural networks; 
+# (2) plotting histogram of trajectory data;
+# (3) defining a two-dimensional space to plot the learned functions.
+
+# A feature is defined by providing the name, the type of feature, and a selector used in the package MDAnalysis. 
+# Supported types are: angle, bond, dihedral, position
+
+[Preprocessing]
+#position, type C or type O or type N
+p1, position, resid 2 
+[End]
+[Histogram]
+d1, dihedral, bynum 5 7 9 15 
+d2, dihedral, bynum 7 9 15 17
+b1, bond, bynum 2 5
+b2, bond, bynum 5 6
+a1, angle, bynum 20 19 21
+a2, angle, bynum 16 15 17
+[End]
+[Output]
+d1, dihedral, bynum 5 7 9 15 
+d2, dihedral, bynum 7 9 15 17
+[End]
+
