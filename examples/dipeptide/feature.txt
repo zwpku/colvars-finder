@@ -3,20 +3,25 @@
 # (2) plotting histogram of trajectory data;
 # (3) defining a two-dimensional space to plot the learned functions.
 
-# A feature is defined by providing the name, the type of feature, and a selector used in the package MDAnalysis. 
-# Supported types are: angle, bond, dihedral, position
+# A feature is defined by the name, the feature type, and selectors used in the package MDAnalysis. 
+# Different parts of each line are seperated by ','.
+# Supported types are: angle, bond, dihedral, and position.
+
+# A line starting from '#' is understood as a comment line, and is not processed. 
+
+# Note: to keep the order of atoms, use 'bynum 5, bynum 2', instead of 'bynum 5 2'
 
 [Preprocessing]
 #position, type C or type O or type N
 p1, position, resid 2 
 [End]
 [Histogram]
-d1, dihedral, bynum 5 7 9 15 
-d2, dihedral, bynum 7 9 15 17
+d1, dihedral, bynum 5, bynum 7, bynum 9, bynum 15 
+d2, dihedral, bynum 7, bynum 9, bynum 15, bynum 17
 b1, bond, bynum 2 5
 b2, bond, bynum 5 6
-a1, angle, bynum 20 19 21
-a2, angle, bynum 16 15 17
+a1, angle, bynum 20, bynum 19, bynum 21
+a2, angle, bynum 16, bynum 15, bynum 17
 [End]
 [Output]
 d1, dihedral, bynum 5 7 9 15 

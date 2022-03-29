@@ -38,7 +38,7 @@ class EigenFunction(torch.nn.Module):
 class TrainingTask(object):
     """class for a training task
     """
-    def __init__(self, args, traj_obj, model_path, histogram_feature_mapper=None, output_feature_mapper=None):
+    def __init__(self, args, traj_obj, pp_layer, model_path, histogram_feature_mapper=None, output_feature_mapper=None):
 
         self.learning_rate = args.learning_rate
         self.num_epochs= args.num_epochs
@@ -56,6 +56,9 @@ class TrainingTask(object):
         self.use_gpu = args.use_gpu
 
         self.beta = args.beta
+
+        self.preprocessing_layer = pp_layer
+        self.feature_dim = pp_layer.output_dimension()
 
         print ('\nLog directory: {}\n'.format(self.model_path), flush=True)
         self.writer = SummaryWriter(self.model_path)
@@ -85,27 +88,6 @@ class TrainingTask(object):
             self.output_features = self.output_feature_mapper(traj_obj.trajectory).detach().numpy()
         else :
             self.output_features = None
-
-    def setup_preprocessing_layer(self):
-        # read features from file to define preprocessing
-        feature_reader = feature.FeatureFileReader(self.args.feature_file, 'Preprocessing', self.traj_obj.u, use_all_positions_by_default=True)
-        feature_list = feature_reader.read()
-        
-        # define the map from positions to features 
-        feature_mapper = feature.FeatureMap(feature_list)
-
-        # display information of features used 
-        feature_mapper.info('\nFeatures in preprocessing layer:\n')
-
-        if 'position' in [f.type_name for f in feature_list] : # if atom positions are used, add alignment to preprocessing layer
-            align_atom_ids = self.traj_obj.u.select_atoms(self.args.align_selector).ids
-            print ('\nAdd alignment to preprocessing layer.\naligning by atoms:')
-            print (self.traj_obj.atoms_info.loc[self.traj_obj.atoms_info['id'].isin(align_atom_ids)][['id','name', 'type']], flush=True)
-            align = ann.Align(self.traj_obj.ref_pos, align_atom_ids)
-        else :
-            align = torch.nn.Identity()
-
-        return ann.PreprocessingANN(feature_mapper, align)
 
     def save_model(self, epoch=0):
 
@@ -158,19 +140,14 @@ class AutoEncoderTask(TrainingTask):
     """Training task for autoencoder
     """
 
-    def __init__(self, args, traj_obj,  model_path, histogram_feature_mapper=None, output_feature_mapper=None):
+    def __init__(self, args, traj_obj, pp_layer, model_path, histogram_feature_mapper=None, output_feature_mapper=None):
 
-        super(AutoEncoderTask, self).__init__(args, traj_obj, model_path, histogram_feature_mapper, output_feature_mapper)
+        super(AutoEncoderTask, self).__init__(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper)
 
         self.model_name = 'autoencoder'
 
-        # define preprocessing layer: first align (if positions are used), then map to features
-        self.preprocessing_layer = self.setup_preprocessing_layer()
-
-        # output dimension of the map 
-        feature_dim = self.preprocessing_layer.feature_dim
         # sizes of feedforward neural networks
-        e_layer_dims = [feature_dim] + args.e_layer_dims + [self.k]
+        e_layer_dims = [self.feature_dim] + args.e_layer_dims + [self.k]
         d_layer_dims = [self.k] + args.d_layer_dims + [feature_dim]
 
         # define autoencoder
@@ -274,9 +251,9 @@ class EigenFunctionTask(TrainingTask):
     """Training task for eigenfunctions 
     """
 
-    def __init__(self, args, traj_obj,  model_path, histogram_feature_mapper=None, output_feature_mapper=None):
+    def __init__(self, args, traj_obj,  pp_layer, model_path, histogram_feature_mapper=None, output_feature_mapper=None):
 
-        super(EigenFunctionTask, self).__init__(args, traj_obj, model_path, histogram_feature_mapper, output_feature_mapper)
+        super(EigenFunctionTask, self).__init__(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper)
 
         self.model_name = 'eigenfunction'
 
@@ -300,12 +277,6 @@ class EigenFunctionTask(TrainingTask):
         # diagnoal matrix 
         # the unit of eigenvalues given by Rayleigh quotients is ns^{-1}.
         self.diag_coeff = torch.ones(self.tot_dim).double().to(self.device) * args.diffusion_coeff * 1e7 * self.beta
-
-        # define preprocessing layer: first align (if positions are used), then map to features
-        self.preprocessing_layer = self.setup_preprocessing_layer()
-
-        # output dimension of the map 
-        feature_dim = self.preprocessing_layer.feature_dim
 
         layer_dims = [feature_dim] + args.layer_dims + [1]
 
