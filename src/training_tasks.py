@@ -48,7 +48,6 @@ class TrainingTask(object):
         self.histogram_feature_mapper = histogram_feature_mapper
         self.output_feature_mapper = output_feature_mapper
         self.traj_obj = traj_obj
-        self.args = args
         self.k = args.k
         self.model_path = model_path
         self.num_scatter_states = args.num_scatter_states
@@ -60,12 +59,15 @@ class TrainingTask(object):
         self.preprocessing_layer = pp_layer
         self.feature_dim = pp_layer.output_dimension()
 
+        self.model_name = type(self).__name__
+
         print ('\nLog directory: {}\n'.format(self.model_path), flush=True)
+
         self.writer = SummaryWriter(self.model_path)
 
         if self.histogram_feature_mapper is not None :
-            histogram_feature = self.histogram_feature_mapper(traj_obj.trajectory).detach().numpy()
-            feature_names = self.histogram_feature_mapper.feature_all_names()
+            histogram_feature = self.histogram_feature_mapper(torch.tensor(traj_obj.trajectory)).detach().numpy()
+            feature_names = self.histogram_feature_mapper.get_feature_info()['name']
             df = pd.DataFrame(data=histogram_feature, columns=feature_names) 
 
             fig, ax = plt.subplots()
@@ -85,7 +87,7 @@ class TrainingTask(object):
             print (f'Histogram and trajectory plots of features saved.', flush=True) 
 
         if self.output_feature_mapper is not None :
-            self.output_features = self.output_feature_mapper(traj_obj.trajectory).detach().numpy()
+            self.output_features = self.output_feature_mapper(torch.tensor(traj_obj.trajectory)).detach().numpy()
         else :
             self.output_features = None
 
@@ -120,10 +122,10 @@ class TrainingTask(object):
             sc = ax.scatter(feature_data[:,0], feature_data[:,1], s=2.0, c=cv_vals[:,idx].detach().numpy(), cmap='jet')
 
             ax.set_title(f'{idx+1}th dimension', fontsize=27)
-            ax.set_xlabel(r'{}'.format(self.output_feature_mapper.feature_name(0)), fontsize=25, labelpad=3, rotation=0)
+            ax.set_xlabel(r'{}'.format(self.output_feature_mapper.get_feature(0).get_name()), fontsize=25, labelpad=3, rotation=0)
             ax.set_xticks([-3, -2, -1, 0, 1, 2, 3])
             ax.set_yticks([-3, -2, -1, 0, 1, 2, 3])
-            ax.set_ylabel(r'{}'.format(self.output_feature_mapper.feature_name(1)), fontsize=25, labelpad=-10, rotation=0)
+            ax.set_ylabel(r'{}'.format(self.output_feature_mapper.get_feature(0).get_name()), fontsize=25, labelpad=-10, rotation=0)
 
             cax = fig.add_axes([0.92, 0.10, .02, 0.80])
             cbar = fig.colorbar(sc, cax=cax)
@@ -144,20 +146,18 @@ class AutoEncoderTask(TrainingTask):
 
         super(AutoEncoderTask, self).__init__(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper)
 
-        self.model_name = 'autoencoder'
-
         # sizes of feedforward neural networks
         e_layer_dims = [self.feature_dim] + args.e_layer_dims + [self.k]
-        d_layer_dims = [self.k] + args.d_layer_dims + [feature_dim]
+        d_layer_dims = [self.k] + args.d_layer_dims + [self.feature_dim]
 
         # define autoencoder
         self.model = AutoEncoder(e_layer_dims, d_layer_dims, args.activation()).to(device=self.device)
         # print the model
-        print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(feature_dim, self.k), self.model)
+        print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(self.feature_dim, self.k), self.model)
 
         if os.path.isfile(args.load_model_filename): 
             self.model.load_state_dict(torch.load(args.load_model_filename))
-            print (f'model parameters loaded from: {self.args.load_model_filename}')
+            print (f'model parameters loaded from: {args.load_model_filename}')
 
         if args.optimizer == 'Adam':
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
@@ -166,7 +166,7 @@ class AutoEncoderTask(TrainingTask):
 
         #--- prepare the data ---
         self.weights = torch.tensor(traj_obj.weights)
-        self.feature_traj = self.preprocessing_layer(traj_obj.trajectory)
+        self.feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory))
 
         # print information of trajectory
         print ( '\nshape of trajectory data array:\n {}'.format(self.feature_traj.shape), flush=True )
@@ -255,8 +255,6 @@ class EigenFunctionTask(TrainingTask):
 
         super(EigenFunctionTask, self).__init__(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper)
 
-        self.model_name = 'eigenfunction'
-
         self.alpha = args.alpha
         self.sort_eigvals_in_training = args.sort_eigvals_in_training
         self.eig_w = args.eig_w
@@ -267,7 +265,7 @@ class EigenFunctionTask(TrainingTask):
 
         #--- prepare the data ---
         self.weights = torch.tensor(traj_obj.weights)
-        traj = traj_obj.trajectory
+        traj = torch.tensor(traj_obj.trajectory)
 
         # print information of trajectory
         print ( '\nshape of trajectory data array:\n {}'.format(traj.shape) )
@@ -276,11 +274,11 @@ class EigenFunctionTask(TrainingTask):
 
         # diagnoal matrix 
         # the unit of eigenvalues given by Rayleigh quotients is ns^{-1}.
-        self.diag_coeff = torch.ones(self.tot_dim).double().to(self.device) * args.diffusion_coeff * 1e7 * self.beta
+        self.diag_coeff = torch.ones(self.tot_dim).to(self.device) * args.diffusion_coeff * 1e7 * self.beta
 
-        layer_dims = [feature_dim] + args.layer_dims + [1]
+        layer_dims = [self.feature_dim] + args.layer_dims + [1]
 
-        self.model = EigenFunction(layer_dims, self.k, self.args.activation()).to(self.device)
+        self.model = EigenFunction(layer_dims, self.k, args.activation()).to(self.device)
 
         print ('\nEigenfunctions:\n', self.model, flush=True)
 
@@ -288,7 +286,7 @@ class EigenFunctionTask(TrainingTask):
         traj.requires_grad_()
         self.feature_traj = self.preprocessing_layer(traj)
 
-        f_grad_vec = [torch.autograd.grad(outputs=self.feature_traj[:,idx].sum(), inputs=traj, retain_graph=True)[0] for idx in range(feature_dim)]
+        f_grad_vec = [torch.autograd.grad(outputs=self.feature_traj[:,idx].sum(), inputs=traj, retain_graph=True)[0] for idx in range(self.feature_dim)]
         self.feature_grad_vec = torch.stack([f_grad.reshape((-1, self.tot_dim)) for f_grad in f_grad_vec], dim=2).detach().to(self.device)
 
         self.feature_traj = self.feature_traj.detach()
@@ -299,7 +297,7 @@ class EigenFunctionTask(TrainingTask):
 
         if os.path.isfile(args.load_model_filename): 
             self.model.load_state_dict(torch.load(args.load_model_filename))
-            print (f'model parameters loaded from: {self.args.load_model_filename}')
+            print (f'model parameters loaded from: {args.load_model_filename}')
 
         if args.optimizer == 'Adam':
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
@@ -307,7 +305,7 @@ class EigenFunctionTask(TrainingTask):
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
     def colvar_model(self):
-        return MolANN(self.preprocessing_layer, self.model)
+        return ann.MolANN(self.preprocessing_layer, self.model)
 
     def cv_on_data(self, X):
         return self.model(X)[:,self.cvec]
@@ -344,7 +342,7 @@ class EigenFunctionTask(TrainingTask):
 
         non_penalty_loss = 1.0 / (tot_weight * self.beta) * sum([self.eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self.diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.k)])
 
-        penalty = torch.zeros(1, requires_grad=True).double()
+        penalty = torch.zeros(1, requires_grad=True)
 
         # Sum of squares of variance for each eigenfunction
         penalty = sum([(var_list[idx] - 1.0)**2 for idx in range(self.k)])
@@ -374,8 +372,11 @@ class EigenFunctionTask(TrainingTask):
                                                    drop_last=True,
                                                    shuffle=False)
         
+        assert len(train_loader) > 0 and len(test_loader) > 0, 'DataLoader is empty, possibly because batch size is too large comparing to trajectory data!'
+
         # --- start the training over the required number of epochs ---
         self.loss_list = []
+
         print ("\ntraining starts, %d epochs in total." % self.num_epochs) 
         print ("%d iterations per epoch, %d iterations in total." % (len(train_loader), len(train_loader) * self.num_epochs), flush=True)
 
