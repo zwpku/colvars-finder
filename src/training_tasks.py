@@ -11,29 +11,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 import os
 
-# autoencoder class 
-class AutoEncoder(torch.nn.Module):
-    def __init__(self, e_layer_dims, d_layer_dims, activation=torch.nn.Tanh()):
-        super(AutoEncoder, self).__init__()
-        self.encoder = ann.create_sequential_nn(e_layer_dims, activation)
-        self.decoder = ann.create_sequential_nn(d_layer_dims, activation)
-
-    def forward(self, inp):
-        """TBA
-        """
-        return self.decoder(self.encoder(inp))
-
-# eigenfunction class
-class EigenFunction(torch.nn.Module):
-    def __init__(self, layer_dims, k, activation=torch.nn.Tanh()):
-        super(EigenFunction, self).__init__()
-        assert layer_dims[-1] == 1, "each eigenfunction must be one-dimensional"
-
-        self.eigen_funcs = torch.nn.ModuleList([ann.create_sequential_nn(layer_dims, activation) for idx in range(k)])
-
-    def forward(self, inp):
-        """TBA"""
-        return torch.cat([nn(inp) for nn in self.eigen_funcs], dim=1)
+from utils import AutoEncoder, EigenFunction
 
 class TrainingTask(object):
     """class for a training task
