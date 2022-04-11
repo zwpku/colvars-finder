@@ -1,6 +1,9 @@
 import torch
 import molann.ann as ann
 import configparser
+import os 
+
+from openmm import unit
 
 class Args(object):
 
@@ -9,17 +12,26 @@ class Args(object):
         config = configparser.ConfigParser()
         config.read(config_filename)
 
-        self.pdb_filename = config['System'].get('pdb_filename')
-        self.traj_dcd_filename = config['System'].get('traj_dcd_filename')
-        self.traj_weight_filename = config['System'].get('traj_weight_filename')
         self.sys_name = config['System'].get('sys_name')
-        self.temp = config['System'].getfloat('temperature')
+        self.pdb_filename = config['System'].get('pdb_filename')
+        self.temp = config['System'].getfloat('sys_temperature')
+
+        sampling_path = config['Sampling'].get('sampling_path')
+        self.traj_dcd_filename = config['Sampling'].get('traj_dcd_filename')
+        self.traj_weight_filename = config['Sampling'].get('traj_weight_filename')
+
+        # add path to filenames
+        self.traj_dcd_filename = os.path.join(sampling_path, self.traj_dcd_filename)
+        self.traj_weight_filename = os.path.join(sampling_path, self.traj_weight_filename)
 
          # unit: kJ/mol
-        kT = self.temp * 1.380649 * 6.02214076 * 1e-3
+        kT = self.temp * unit.kelvin * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA / unit.kilojoule_per_mole
         self.beta = 1.0 / kT
-         
+        
         #set training parameters
+        self.cutoff_weight_min = config['Training'].getfloat('cutoff_weight_min')
+        self.cutoff_weight_max = config['Training'].getfloat('cutoff_weight_max')
+
         self.use_gpu =config['Training'].getboolean('use_gpu')
         self.batch_size = config['Training'].getint('batch_size')
         self.num_epochs = config['Training'].getint('num_epochs')

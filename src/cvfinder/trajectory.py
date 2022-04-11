@@ -19,12 +19,11 @@ class WeightedTrajectory(object):
     Example
     -------
     """
-    def __init__(self, universe, weight_filename=None):
-
+    def __init__(self, universe, weight_filename=None, min_w=0.0, max_w=1e10):
 
         print ('\nloading trajectory to numpy array...', end='')
 
-        # load trajectory to torch tensor 
+        # load trajectory 
         self.trajectory = universe.trajectory.timeseries(order='fac')
 
         print ('done.')
@@ -50,26 +49,35 @@ class WeightedTrajectory(object):
               )
 
         if weight_filename :
-            self.weights = self.load_weights(weight_filename)
+
+            print ('\nloading weights from file: ', weight_filename)
+
+            time_weight_vec = pd.read_csv(weight_filename)
+            # normalize
+            time_weight_vec['weight'] /= time_weight_vec['weight'].mean()
+
+            print ('\n', time_weight_vec.head(8))
+
+            print ('\nWeights:\n', time_weight_vec['weight'].describe(percentiles=[0.2, 0.4, 0.6, 0.8]))
+
+            if self.start_time - time_weight_vec.iloc[0,0] > 0.01 or self.n_frames != len(time_weight_vec.index) :
+                print ('Error: time in weight file does match the trajectory data!\n')
+                exit(0)
+            else :
+                print ('\nCompatibility of weights and trajectory verified.\n')
+
+            selected_idx = (time_weight_vec['weight'] > min_w) & (time_weight_vec['weight'] < max_w)
+            weights = time_weight_vec[selected_idx].copy()
+
+            self.trajectory = self.trajectory[selected_idx,:,:]
+
+            weights['weight'] /= weights['weight'].mean()
+
+            print ('\nAfter selecting states whose weights are in [{:.3e}, {:.3e}] and renormalization:\n' \
+                   '\nShape of trajectory: {}'.format(min_w, max_w, self.trajectory.shape)
+                  )
+            print ('\nWeights:\n', weights['weight'].describe(percentiles=[0.2, 0.4, 0.6, 0.8]))
+
+            self.weights = weights['weight'].to_numpy()
         else :
             self.weights = np.ones(universe.n_frames)
-
-    def load_weights(self, weight_filename):
-        """
-        TBA
-        """
-        print ('\nloading weights from file: ', weight_filename)
-
-        time_weight_vec = pd.read_csv(weight_filename)
-        # normalize
-        time_weight_vec['weight'] /= time_weight_vec['weight'].mean()
-
-        print ('\n', time_weight_vec.head(8))
-
-        if self.start_time - time_weight_vec.iloc[0,0] > 0.01 or self.n_frames != len(time_weight_vec.index) :
-            print ('Error: time in weight file does match the trajectory data!\n')
-            exit(0)
-
-        # weights are in the second column
-        return time_weight_vec.iloc[:,1].to_numpy()
-

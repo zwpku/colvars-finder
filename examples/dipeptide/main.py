@@ -12,7 +12,7 @@ import time
 import MDAnalysis as mda
 import pandas as pd
 
-sys.path.append('../src/')
+sys.path.append('../src/cvfinder/')
 from training_tasks import AutoEncoderTask, EigenFunctionTask 
 from trajectory import WeightedTrajectory
 from utils import Args
@@ -96,7 +96,7 @@ def main():
     pp_layer = ann.PreprocessingANN(align, feature_mapper)
 
     # read trajectory
-    traj_obj = WeightedTrajectory(universe, args.traj_weight_filename)
+    traj_obj = WeightedTrajectory(universe, args.traj_weight_filename, args.cutoff_weight_min, args.cutoff_weight_max)
 
     if args.train_ae :
         # path to store log data
