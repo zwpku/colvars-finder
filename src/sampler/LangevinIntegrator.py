@@ -109,7 +109,7 @@ simulation.reporters.append(StateDataReporter(csv_filename, report_interval_csv,
                                               temperature=True))
 
 # run the simulation
-print ('Step 3: Simulation starts.')
+print ('Step 3: Simulation starts.', flush=True)
 start = time.time()
 simulation.step(n_steps)
 end = time.time()
