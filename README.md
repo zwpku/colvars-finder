@@ -1,6 +1,6 @@
-# CVFinder
+# ColVarsFinder
 
-Codes to find collective variables (CV) by training neural networks.
+Find collective variables (CVs) by training neural networks.
 
 ## Usage
 
