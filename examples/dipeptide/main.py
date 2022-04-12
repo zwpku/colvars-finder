@@ -12,7 +12,7 @@ import time
 import MDAnalysis as mda
 import pandas as pd
 
-sys.path.append('../src/cvfinder/')
+sys.path.append('../src/colvars/')
 from training_tasks import AutoEncoderTask, EigenFunctionTask 
 from trajectory import WeightedTrajectory
 from utils import Args
