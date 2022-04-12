@@ -88,8 +88,8 @@ integrator = LangevinIntegrator(sampling_temp, frictionCoeff, step_size)
 simulation = Simulation(pdb.topology, system, integrator)
 simulation.context.setPositions(pdb.positions)
 
-platform = context.getPlatform()
-print ("REMARK  Using OpenMM platform %s\n" % platform.getName().c_str())
+platform = simulation.context.getPlatform()
+print ("\nUsing OpenMM platform: %s\n" % platform.getName())
 
 print ('\nStep 1: Energy minimization...', end='')
 simulation.minimizeEnergy()
