@@ -39,7 +39,7 @@ class TrainingTask(object):
 
         self.model_name = type(self).__name__
 
-        print ('\nLog directory: {}\n'.format(self.model_path), flush=True)
+        print ('\n[Info] Log directory: {}\n'.format(self.model_path), flush=True)
 
         self.writer = SummaryWriter(self.model_path)
 
@@ -48,19 +48,18 @@ class TrainingTask(object):
             feature_names = self.histogram_feature_mapper.get_feature_info()['name']
             df = pd.DataFrame(data=histogram_feature, columns=feature_names) 
 
-            fig, ax = plt.subplots()
-            df.hist(ax=ax)
+            df.hist(figsize=(5,5))
             fig_name = f'{self.model_path}/histogram_feature.png'
-            fig.savefig(fig_name, dpi=200, bbox_inches='tight')
+            plt.savefig(fig_name, dpi=200, bbox_inches='tight')
             plt.close()
             self.writer.add_image(f'histogram features', cv.cvtColor(cv.imread(fig_name), cv.COLOR_BGR2RGB), dataformats='HWC')
 
-            df.plot(subplots=True) 
+            df.plot(figsize=(5,5), subplots=True) 
             plt.legend(loc='best')
             fig_name = f'{self.model_path}/feature_along_trajectory.png'
-            plt.savefig(fig_name, dpi=200, bbox_inches='tight')
+            plt.savefig(fig_name, dpi=300, bbox_inches='tight')
             plt.close()
-            self.writer.add_image(f'feature along trajectory', cv.cvtColor(cv.imread(fig_name), cv.COLOR_BGR2RGB), dataformats='HWC')
+            self.writer.add_image(f'features along trajectory', cv.cvtColor(cv.imread(fig_name), cv.COLOR_BGR2RGB), dataformats='HWC')
 
             print (f'Histogram and trajectory plots of features saved.', flush=True) 
 
@@ -147,7 +146,7 @@ class AutoEncoderTask(TrainingTask):
         self.feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory))
 
         # print information of trajectory
-        print ( '\nshape of trajectory data array:\n {}'.format(self.feature_traj.shape), flush=True )
+        print ( '\nShape of trajectory data array:\n {}'.format(self.feature_traj.shape), flush=True )
 
     def colvar_model(self):
         return ann.MolANN(self.preprocessing_layer, self.model.encoder)
@@ -179,7 +178,7 @@ class AutoEncoderTask(TrainingTask):
 
         # --- start the training over the required number of epochs ---
         self.loss_list = []
-        print ("\ntraining starts, %d epochs in total." % self.num_epochs) 
+        print ("\nTraining starts, %d epochs in total." % self.num_epochs) 
         print ("%d iterations per epoch, %d iterations in total." % (len(train_loader), len(train_loader) * self.num_epochs), flush=True)
 
         for epoch in tqdm(range(self.num_epochs)):
@@ -246,7 +245,7 @@ class EigenFunctionTask(TrainingTask):
         traj = torch.tensor(traj_obj.trajectory)
 
         # print information of trajectory
-        print ( '\nshape of trajectory data array:\n {}'.format(traj.shape) )
+        print ( '\nShape of trajectory data array:\n {}'.format(traj.shape) )
 
         self.tot_dim = traj.shape[1] * 3 
 
@@ -355,7 +354,7 @@ class EigenFunctionTask(TrainingTask):
         # --- start the training over the required number of epochs ---
         self.loss_list = []
 
-        print ("\ntraining starts, %d epochs in total." % self.num_epochs) 
+        print ("\nTraining starts, %d epochs in total." % self.num_epochs) 
         print ("%d iterations per epoch, %d iterations in total." % (len(train_loader), len(train_loader) * self.num_epochs), flush=True)
 
         for epoch in tqdm(range(self.num_epochs)):

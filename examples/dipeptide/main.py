@@ -31,11 +31,22 @@ def main():
     # read configuration parameters
     args = Args()
 
+    print (f'===Computing Devices===')
+    # CUDA support
+    if args.use_gpu:
+        print (f'Device name: {args.device}')
+        print ('Active CUDA Device: GPU', torch.cuda.current_device())
+        print ('Available devices: ', torch.cuda.device_count())
+        print ('CUDA name: ', torch.cuda.get_device_name(0))
+    else:
+        print (f'Device name: {args.device}')
+
+    print (f'=======================\n')
+
     if args.seed:
         set_all_seeds(args.seed)
 
-    # load the trajectory data from DCD file
-    universe = mda.Universe(args.pdb_filename, args.traj_dcd_filename)
+    universe = mda.Universe(args.pdb_filename)
 
     atoms_info = pd.DataFrame(
         np.array([universe.atoms.ids, universe.atoms.names,
@@ -44,31 +55,43 @@ def main():
         columns=['id', 'name', 'type', 'mass', 'resid', 'resname']
         )
 
-    print ('Atom information:\n', atoms_info)
+    print ('==========System Info=================\n', atoms_info)
 
     print ('\nSummary:\n', atoms_info['type'].value_counts().rename_axis('type').reset_index(name='counts'))
 
     # print information of trajectory
-    print ('\nno. of atoms: {}\nno. of residues: {}\n'.format(universe.trajectory.n_atoms, universe.residues.n_residues) )
+    print ('{} atoms, {} residues.'.format(universe.atoms.n_atoms, universe.residues.n_residues) )
+    print ('==========End of System Info==========\n')
 
+    print ('==============Features===================\n')
+    print ('Features file: {}'.format(args.feature_file)) 
+
+    print ('\nFeatures for histogram: \n')
     # read features for histogram plot
     feature_reader = FeatureFileReader(args.feature_file, 'Histogram', universe)
     feature_list = feature_reader.read()
 
-    histogram_feature_mapper = ann.FeatureLayer(feature_list, use_angle_value=True)
-    print (histogram_feature_mapper.get_feature_info())
+    if len(feature_list) == 0 : 
+        print ("Warning: no feature found! \n") 
+        histogram_feature_mapper = None
+    else :
+        histogram_feature_mapper = ann.FeatureLayer(feature_list, use_angle_value=True)
+        print (histogram_feature_mapper.get_feature_info())
+        # make sure each feature is one-dimensional
+        assert histogram_feature_mapper.output_dimension() == len(feature_list), "Features for histogram are incorrect, output of each feature must be one-dimensional!" 
 
-    # make sure each feature is one-dimensional
-    assert histogram_feature_mapper.output_dimension() == len(feature_list), "Features for histogram are incorrect, output of each feature must be one-dimensional!" 
+    print ('\nFeatures for ouptut: \n')
     # features to define a 2d space for output
     feature_reader = FeatureFileReader(args.feature_file, 'Output', universe) 
     feature_list= feature_reader.read()
-    output_feature_mapper = ann.FeatureLayer(feature_list, use_angle_value=True)
-
-    if output_feature_mapper.output_dimension() == 2 and len(feature_list) == 2 : # use it only if it is 2D
-        print (output_feature_mapper.get_feature_info())
+    if len(feature_list) == 2 :
+        output_feature_mapper = ann.FeatureLayer(feature_list, use_angle_value=True)
+        if output_feature_mapper.output_dimension() == 2 : # use it only if it is 2D
+            print (output_feature_mapper.get_feature_info())
+        else :
+            print (f'\nOutput feature mapper set to None, since 2d feature required for output.')
+            output_feature_mapper = None
     else :
-        print (f'\nOutput feature mapper set to None, since 2d feature required for output.')
         output_feature_mapper = None
 
     # read features from file to define preprocessing
@@ -78,25 +101,37 @@ def main():
     # define the map from positions to features 
     feature_mapper = ann.FeatureLayer(feature_list, use_angle_value=False)
 
-    # display information of features used 
     print ('\nFeatures in preprocessing layer:')
+    # display information of features used 
     print (feature_mapper.get_feature_info())
+
+    print ('==============End of Features===================\n')
+
+    print ('===================Alignment======================\n')
 
     if 'position' in [f.get_type() for f in feature_list] : # if atom positions are used, add alignment to preprocessing layer
         # define alignment using positions in pdb file
-        ref_universe = mda.Universe(args.pdb_filename)
-        align_atom_group = ref_universe.select_atoms(args.align_selector)
+        align_atom_group = universe.select_atoms(args.align_selector)
         print ('\nAdd alignment to preprocessing layer.\naligning by atoms:')
         print (atoms_info.loc[atoms_info['id'].isin(align_atom_group.ids)][['id','name', 'type']], flush=True)
         align = ann.AlignmentLayer(align_atom_group)
-        align.show_info()
+        # align.show_info()
     else :
+        print ('No aligment used.')
         align = None
+
+    print ('==============End of Alignment===================\n')
 
     pp_layer = ann.PreprocessingANN(align, feature_mapper)
 
-    # read trajectory
+    universe = mda.Universe(args.pdb_filename, args.traj_dcd_filename)
+
+    print ('====================Trajectory===================')
+
+    # load the trajectory data from DCD file
     traj_obj = WeightedTrajectory(universe, args.traj_weight_filename, args.cutoff_weight_min, args.cutoff_weight_max)
+
+    print ('================End of Trajectory=================\n')
 
     if args.train_ae :
         # path to store log data

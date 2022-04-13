@@ -68,16 +68,11 @@ class Args(object):
         # CUDA support
         if torch.cuda.is_available() and self.use_gpu:
             self.device = torch.device('cuda')
-            print (f'device name: {self.device}')
-            print ('Active CUDA Device: GPU', torch.cuda.current_device())
-            print ('Available devices: ', torch.cuda.device_count())
-            print ('CUDA name: ', torch.cuda.get_device_name(0))
         else:
             self.device = torch.device('cpu')
             self.use_gpu = False
-            print (f'device name: {self.device}')
 
-        print (f'Parameters loaded from: {config_filename}\n', flush=True)
+        print (f'\n[Info] Parameters loaded from: {config_filename}\n', flush=True)
 
 # autoencoder class 
 class AutoEncoder(torch.nn.Module):

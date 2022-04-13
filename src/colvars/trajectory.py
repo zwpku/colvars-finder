@@ -19,52 +19,50 @@ class WeightedTrajectory(object):
     Example
     -------
     """
-    def __init__(self, universe, weight_filename=None, min_w=0.0, max_w=1e10):
+    def __init__(self, universe, weight_filename=None, min_w=0.0, max_w=1e10, verbose=True):
 
-        print ('\nloading trajectory to numpy array...', end='')
+        if verbose: print ('\nloading trajectory to numpy array...', end='') 
 
         # load trajectory 
         self.trajectory = universe.trajectory.timeseries(order='fac')
 
-        print ('done.')
+        if verbose: print ('done.') 
 
         self.start_time = universe.trajectory.time
         self.dt = universe.trajectory.dt
         self.n_frames = universe.trajectory.n_frames
 
         # print information of trajectory
-        print ('\nTrajectory Info:\n' \
-               '  no. of frames in trajectory data: {}\n' \
-               '  time of first frame: {:.1f}ps\n'\
-               '  time of last frame: {:.1f}ps\n'\
-               '  stepsize: {:.1f}ps\n' \
-               '  time length: {:.1f}ps\n'\
-               '  shape of trajectory data array: {}\n'.format(self.n_frames, 
-                                                               self.start_time, 
-                                                               universe.trajectory[-1].time,
-                                                               self.dt, 
-                                                               universe.trajectory.totaltime,
-                                                               self.trajectory.shape
-                                                            )
-              )
+        if verbose: 
+            print ('\nTrajectory Info:\n' \
+                   '  no. of frames in trajectory data: {}\n' \
+                   '  time of first frame: {:.1f}ps\n'\
+                   '  time of last frame: {:.1f}ps\n'\
+                   '  stepsize: {:.1f}ps\n' \
+                   '  time length: {:.1f}ps\n'\
+                   '  shape of trajectory data array: {}\n'.format(self.n_frames, 
+                                                                   self.start_time, 
+                                                                   universe.trajectory[-1].time,
+                                                                   self.dt, 
+                                                                   universe.trajectory.totaltime,
+                                                                   self.trajectory.shape
+                                                                )
+                  )
 
         if weight_filename :
-
-            print ('\nloading weights from file: ', weight_filename)
 
             time_weight_vec = pd.read_csv(weight_filename)
             # normalize
             time_weight_vec['weight'] /= time_weight_vec['weight'].mean()
 
-            print ('\n', time_weight_vec.head(8))
-
-            print ('\nWeights:\n', time_weight_vec['weight'].describe(percentiles=[0.2, 0.4, 0.6, 0.8]))
+            if verbose: 
+                print ('\nloading weights from file: ', weight_filename)
+                print ('\nWeights:\n', time_weight_vec['weight'].describe(percentiles=[0.2, 0.4, 0.6, 0.8]))
 
             if self.start_time - time_weight_vec.iloc[0,0] > 0.01 or self.n_frames != len(time_weight_vec.index) :
-                print ('Error: time in weight file does match the trajectory data!\n')
-                exit(0)
+                raise ValueError('Time in weight file does match the trajectory data!\n')
             else :
-                print ('\nCompatibility of weights and trajectory verified.\n')
+                if verbose: print ('\nCompatibility of weights and trajectory verified.\n')
 
             selected_idx = (time_weight_vec['weight'] > min_w) & (time_weight_vec['weight'] < max_w)
             weights = time_weight_vec[selected_idx].copy()
@@ -73,10 +71,11 @@ class WeightedTrajectory(object):
 
             weights['weight'] /= weights['weight'].mean()
 
-            print ('\nAfter selecting states whose weights are in [{:.3e}, {:.3e}] and renormalization:\n' \
-                   '\nShape of trajectory: {}'.format(min_w, max_w, self.trajectory.shape)
-                  )
-            print ('\nWeights:\n', weights['weight'].describe(percentiles=[0.2, 0.4, 0.6, 0.8]))
+            if verbose: 
+                print ('\nAfter selecting states whose weights are in [{:.3e}, {:.3e}] and renormalization:\n' \
+                       '\nShape of trajectory: {}'.format(min_w, max_w, self.trajectory.shape)
+                      )
+                print ('\nWeights:\n', weights['weight'].describe(percentiles=[0.2, 0.4, 0.6, 0.8]))
 
             self.weights = weights['weight'].to_numpy()
         else :
