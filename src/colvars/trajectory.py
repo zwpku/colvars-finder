@@ -79,4 +79,4 @@ class WeightedTrajectory(object):
 
             self.weights = weights['weight'].to_numpy()
         else :
-            self.weights = np.ones(universe.n_frames)
+            self.weights = np.ones(self.n_frames)
