@@ -132,7 +132,7 @@ class AutoEncoderTask(TrainingTask):
         # print the model
         print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(self.feature_dim, self.k), self.model)
 
-        if os.path.isfile(args.load_model_filename): 
+        if args.load_model_filename and os.path.isfile(args.load_model_filename): 
             self.model.load_state_dict(torch.load(args.load_model_filename))
             print (f'model parameters loaded from: {args.load_model_filename}')
 
@@ -178,8 +178,10 @@ class AutoEncoderTask(TrainingTask):
 
         # --- start the training over the required number of epochs ---
         self.loss_list = []
-        print ("\nTraining starts, %d epochs in total." % self.num_epochs) 
-        print ("%d iterations per epoch, %d iterations in total." % (len(train_loader), len(train_loader) * self.num_epochs), flush=True)
+
+        print ("\nTraining starts.\n%d epochs in total, batch size: %d" % (self.num_epochs, self.batch_size)) 
+        print ("\nTrain set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_train), len(train_loader), len(train_loader) * self.num_epochs), flush=True)
+        print ("Test set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_test), len(test_loader), len(test_loader) * self.num_epochs), flush=True)
 
         for epoch in tqdm(range(self.num_epochs)):
             # Train the model by going through the whole dataset
@@ -244,9 +246,6 @@ class EigenFunctionTask(TrainingTask):
         self.weights = torch.tensor(traj_obj.weights)
         traj = torch.tensor(traj_obj.trajectory)
 
-        # print information of trajectory
-        print ( '\nShape of trajectory data array:\n {}'.format(traj.shape) )
-
         self.tot_dim = traj.shape[1] * 3 
 
         # diagnoal matrix 
@@ -272,9 +271,9 @@ class EigenFunctionTask(TrainingTask):
 
         print ('Done\n', flush=True)
 
-        if os.path.isfile(args.load_model_filename): 
+        if args.load_model_filename and os.path.isfile(args.load_model_filename): 
             self.model.load_state_dict(torch.load(args.load_model_filename))
-            print (f'model parameters loaded from: {args.load_model_filename}')
+            print (f'Model parameters loaded from:\n\t {args.load_model_filename}')
 
         if args.optimizer == 'Adam':
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
@@ -354,8 +353,9 @@ class EigenFunctionTask(TrainingTask):
         # --- start the training over the required number of epochs ---
         self.loss_list = []
 
-        print ("\nTraining starts, %d epochs in total." % self.num_epochs) 
-        print ("%d iterations per epoch, %d iterations in total." % (len(train_loader), len(train_loader) * self.num_epochs), flush=True)
+        print ("\nTraining starts.\n%d epochs in total, batch size: %d" % (self.num_epochs, self.batch_size)) 
+        print ("\nTrain set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_train), len(train_loader), len(train_loader) * self.num_epochs), flush=True)
+        print ("Test set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_test), len(test_loader), len(test_loader) * self.num_epochs), flush=True)
 
         for epoch in tqdm(range(self.num_epochs)):
             # Train the model by going through the whole dataset

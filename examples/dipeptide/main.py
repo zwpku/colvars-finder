@@ -16,7 +16,6 @@ sys.path.append('../src/colvars/')
 from training_tasks import AutoEncoderTask, EigenFunctionTask 
 from trajectory import WeightedTrajectory
 from utils import Args
-# -
 
 # +
 def set_all_seeds(seed):
@@ -107,7 +106,7 @@ def main():
 
     print ('==============End of Features===================\n')
 
-    print ('===================Alignment======================\n')
+    print ('===================Alignment Info======================\n')
 
     if 'position' in [f.get_type() for f in feature_list] : # if atom positions are used, add alignment to preprocessing layer
         # define alignment using positions in pdb file
@@ -120,26 +119,26 @@ def main():
         print ('No aligment used.')
         align = None
 
-    print ('==============End of Alignment===================\n')
+    print ('==============End of Alignment Info===================\n')
 
     pp_layer = ann.PreprocessingANN(align, feature_mapper)
 
     universe = mda.Universe(args.pdb_filename, args.traj_dcd_filename)
 
-    print ('====================Trajectory===================')
+    print ('====================Trajectory Info===================')
 
     # load the trajectory data from DCD file
     traj_obj = WeightedTrajectory(universe, args.traj_weight_filename, args.cutoff_weight_min, args.cutoff_weight_max)
 
-    print ('================End of Trajectory=================\n')
+    print ('================End of Trajectory Info=================\n')
 
-    if args.train_ae :
+    if args.task_type == 'Autoencoder' :
         # path to store log data
         prefix = f"{args.sys_name}-autoencoder-" 
         model_path = os.path.join(args.model_save_dir, prefix + time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime()))
         # define training task
         train_obj = AutoEncoderTask(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper)
-    else :
+    else : # task_type: Eigenfunction
         prefix = f"{args.sys_name}-eigenfunction-" 
         model_path = os.path.join(args.model_save_dir, prefix + time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime()))
         train_obj = EigenFunctionTask(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper)

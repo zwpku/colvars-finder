@@ -41,22 +41,25 @@ class Args(object):
         self.load_model_filename =  config['Training'].get('load_model_filename')
         self.model_save_dir = config['Training'].get('model_save_dir') 
         self.save_model_every_step = config['Training'].getint('save_model_every_step')
-        self.train_ae = config['Training'].getboolean('train_autoencoder')
+        self.task_type = config['Training'].get('task_type')
 
-        if self.train_ae :
+        if self.task_type == 'Autoencoder' :
             # encoded dimension
             self.k = config['AutoEncoder'].getint('encoded_dim')
             self.e_layer_dims = [int(x) for x in config['AutoEncoder'].get('encoder_hidden_layer_dims').split(',')]
             self.d_layer_dims = [int(x) for x in config['AutoEncoder'].get('decoder_hidden_layer_dims').split(',')]
             self.activation_name = config['AutoEncoder'].get('activation') 
         else :
-            self.k = config['EigenFunction'].getint('num_eigenfunction')
-            self.layer_dims = [int(x) for x in config['EigenFunction'].get('hidden_layer_dims').split(',')]
-            self.activation_name = config['EigenFunction'].get('activation') 
-            self.alpha = config['EigenFunction'].getfloat('penalty_alpha')
-            self.eig_w = [float(x) for x in config['EigenFunction'].get('eig_w').split(',')]
-            self.diffusion_coeff = config['EigenFunction'].getfloat('diffusion_coeff')
-            self.sort_eigvals_in_training = config['EigenFunction'].getboolean('sort_eigvals_in_training')
+            if self.task_type == 'Eigenfunction':
+                self.k = config['EigenFunction'].getint('num_eigenfunction')
+                self.layer_dims = [int(x) for x in config['EigenFunction'].get('hidden_layer_dims').split(',')]
+                self.activation_name = config['EigenFunction'].get('activation') 
+                self.alpha = config['EigenFunction'].getfloat('penalty_alpha')
+                self.eig_w = [float(x) for x in config['EigenFunction'].get('eig_w').split(',')]
+                self.diffusion_coeff = config['EigenFunction'].getfloat('diffusion_coeff')
+                self.sort_eigvals_in_training = config['EigenFunction'].getboolean('sort_eigvals_in_training')
+            else :
+                raise ValueError(f'Task {self.task_type} not implemented!  Possible values: Autoencoder, Eigenfunction.')
 
         self.activation = getattr(torch.nn, self.activation_name) 
 
