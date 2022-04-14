@@ -280,7 +280,6 @@ class EigenFunctionTask(TrainingTask):
             print ('  shape of feature_gradient vec:', self.feature_grad_vec.shape)
             print ('Done\n', flush=True)
 
-
     def colvar_model(self):
         reordered_model = ReorderedEigenFunction(self.model, self.cvec)
         return ann.MolANN(self.preprocessing_layer, reordered_model)
