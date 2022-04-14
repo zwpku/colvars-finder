@@ -1,2 +1,0 @@
-
-.. automodule:: colvarsfinder.colvars.utils

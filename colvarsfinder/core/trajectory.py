@@ -1,5 +1,5 @@
-"""Feature of Molecular System --- :mod:`molann.feature`
-==========================================================
+"""Weighted Trajectory --- :mod:`colvarsfinder.core.trajectory`
+================================================================
 
 :Author: Wei Zhang
 :Year: 2022

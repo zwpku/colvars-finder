@@ -12,10 +12,13 @@ import time
 import MDAnalysis as mda
 import pandas as pd
 
-sys.path.append('../src/colvars/')
-from training_tasks import AutoEncoderTask, EigenFunctionTask 
-from trajectory import WeightedTrajectory
-from utils import TrainingArgs
+#sys.path.append('../colvarsfinder/core/')
+sys.path.append('../')
+
+from colvarsfinder.core.autoencoder import AutoEncoderTask
+from colvarsfinder.core.eigenfunction import EigenFunctionTask 
+from colvarsfinder.core.trajectory import WeightedTrajectory
+from colvarsfinder.core.base_task import TrainingArgs
 
 # +
 def set_all_seeds(seed):
