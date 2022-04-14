@@ -1,4 +1,4 @@
-name: cvfinder
+name: colvars-finder
 channels:
     - conda-forge
     - defaults

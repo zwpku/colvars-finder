@@ -1,3 +1,21 @@
+"""Feature of Molecular System --- :mod:`molann.feature`
+==========================================================
+
+:Author: Wei Zhang
+:Year: 2022
+:Copyright: GNU Public License v3
+
+This module implements a class that defines a feature of molecular system
+(:class:`molann.feature.Feature`), and a class that constructs a list of
+features from a feature file (:class:`molann.feature.FeatureFileReader`).
+
+Classes
+-------
+.. autoclass:: WeightedTrajectory
+    :members:
+
+"""
+
 import MDAnalysis as mda
 import torch
 import pandas as pd

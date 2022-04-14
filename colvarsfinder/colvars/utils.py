@@ -1,3 +1,28 @@
+"""Feature of Molecular System --- :mod:`molann.feature`
+==========================================================
+
+:Author: Wei Zhang
+:Year: 2022
+:Copyright: GNU Public License v3
+
+This module implements a class that defines a feature of molecular system
+(:class:`molann.feature.Feature`), and a class that constructs a list of
+features from a feature file (:class:`molann.feature.FeatureFileReader`).
+
+Classes
+-------
+.. autoclass:: TrainingArgs
+    :members:
+
+.. autoclass:: AutoEncoder
+    :members:
+
+.. autoclass:: EigenFunction
+    :members:
+
+"""
+
+
 import torch
 import molann.ann as ann
 import configparser
@@ -7,6 +32,17 @@ import copy
 from openmm import unit
 
 class TrainingArgs(object):
+    r"""TBA
+
+    Parameters
+    ----------
+
+    Attributes
+    ----------
+
+    Example
+    -------
+    """
 
     def __init__(self, config_filename='params.cfg'):
 
@@ -80,6 +116,18 @@ class TrainingArgs(object):
 
 # autoencoder class 
 class AutoEncoder(torch.nn.Module):
+    r"""TBA
+
+    Parameters
+    ----------
+
+    Attributes
+    ----------
+
+    Example
+    -------
+    """
+
     def __init__(self, e_layer_dims, d_layer_dims, activation=torch.nn.Tanh()):
         super(AutoEncoder, self).__init__()
         self.encoder = ann.create_sequential_nn(e_layer_dims, activation)
@@ -92,6 +140,18 @@ class AutoEncoder(torch.nn.Module):
 
 # eigenfunction class
 class EigenFunction(torch.nn.Module):
+    r"""TBA
+
+    Parameters
+    ----------
+
+    Attributes
+    ----------
+
+    Example
+    -------
+    """
+
     def __init__(self, layer_dims, k, activation=torch.nn.Tanh()):
         super(EigenFunction, self).__init__()
         assert layer_dims[-1] == 1, "each eigenfunction must be one-dimensional"
@@ -104,6 +164,17 @@ class EigenFunction(torch.nn.Module):
 
 # eigenfunction class
 class ReorderedEigenFunction(torch.nn.Module):
+    r"""TBA
+
+    Parameters
+    ----------
+
+    Attributes
+    ----------
+
+    Example
+    -------
+    """
     def __init__(self, eigenfunction_model, cvec):
         super(ReorderedEigenFunction, self).__init__()
         self.eigen_funcs = torch.nn.ModuleList([copy.deepcopy(eigenfunction_model.eigen_funcs[idx]) for idx in cvec])

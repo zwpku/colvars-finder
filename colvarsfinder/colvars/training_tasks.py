@@ -1,3 +1,28 @@
+"""Training Tasks --- :mod:`molann.feature`
+==========================================================
+
+:Author: Wei Zhang
+:Year: 2022
+:Copyright: GNU Public License v3
+
+This module implements a class that defines a feature of molecular system
+(:class:`molann.feature.Feature`), and a class that constructs a list of
+features from a feature file (:class:`molann.feature.FeatureFileReader`).
+
+Classes
+-------
+.. autoclass:: TrainingTask
+    :members:
+
+.. autoclass:: AutoEncoderTask
+    :members:
+
+.. autoclass:: EigenFunctionTask
+    :members:
+
+"""
+
+
 import molann.ann as ann
 import molann.feature as feature
 import cv2 as cv
@@ -11,7 +36,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 import os
 
-from utils import AutoEncoder, EigenFunction, ReorderedEigenFunction
+from colvarsfinder.colvars.utils import AutoEncoder, EigenFunction, ReorderedEigenFunction
 
 class TrainingTask(object):
     """class for a training task
