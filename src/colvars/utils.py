@@ -5,7 +5,7 @@ import os
 
 from openmm import unit
 
-class Args(object):
+class TrainingArgs(object):
 
     def __init__(self, config_filename='params.cfg'):
 

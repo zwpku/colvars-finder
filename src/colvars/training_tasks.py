@@ -16,7 +16,7 @@ from utils import AutoEncoder, EigenFunction
 class TrainingTask(object):
     """class for a training task
     """
-    def __init__(self, args, traj_obj, pp_layer, model_path, histogram_feature_mapper=None, output_feature_mapper=None):
+    def __init__(self, args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper, verbose):
 
         self.learning_rate = args.learning_rate
         self.num_epochs= args.num_epochs
@@ -31,6 +31,9 @@ class TrainingTask(object):
         self.num_scatter_states = args.num_scatter_states
         self.device = args.device
         self.use_gpu = args.use_gpu
+        self.optimizer_name = args.optimizer
+        self.load_model_filename = args.load_model_filename 
+        self.verbose = verbose
 
         self.beta = args.beta
 
@@ -39,7 +42,7 @@ class TrainingTask(object):
 
         self.model_name = type(self).__name__
 
-        print ('\n[Info] Log directory: {}\n'.format(self.model_path), flush=True)
+        if self.verbose: print ('\n[Info] Log directory: {}\n'.format(self.model_path), flush=True)
 
         self.writer = SummaryWriter(self.model_path)
 
@@ -49,40 +52,52 @@ class TrainingTask(object):
             df = pd.DataFrame(data=histogram_feature, columns=feature_names) 
 
             df.hist(figsize=(5,5))
-            fig_name = f'{self.model_path}/histogram_feature.png'
+            fig_name = f'{self.model_path}/feature_histograms.png'
             plt.savefig(fig_name, dpi=200, bbox_inches='tight')
             plt.close()
-            self.writer.add_image(f'histogram features', cv.cvtColor(cv.imread(fig_name), cv.COLOR_BGR2RGB), dataformats='HWC')
+            self.writer.add_image(f'feature histograms', cv.cvtColor(cv.imread(fig_name), cv.COLOR_BGR2RGB), dataformats='HWC')
 
             df.plot(figsize=(5,5), subplots=True) 
             plt.legend(loc='best')
-            fig_name = f'{self.model_path}/feature_along_trajectory.png'
+            fig_name = f'{self.model_path}/features_along_trajectory.png'
             plt.savefig(fig_name, dpi=300, bbox_inches='tight')
             plt.close()
             self.writer.add_image(f'features along trajectory', cv.cvtColor(cv.imread(fig_name), cv.COLOR_BGR2RGB), dataformats='HWC')
 
-            print (f'Histogram and trajectory plots of features saved.', flush=True) 
+            if self.verbose: print (f'Histogram and trajectory plots of features saved.', flush=True) 
 
         if self.output_feature_mapper is not None :
             self.output_features = self.output_feature_mapper(torch.tensor(traj_obj.trajectory)).detach().numpy()
         else :
             self.output_features = None
 
-    def save_model(self, epoch=0):
+    def init_model_and_optimizer(self):
 
-        print (f"\n\nepoch={epoch}") 
+        if self.load_model_filename and os.path.isfile(self.load_model_filename): 
+            self.model.load_state_dict(torch.load(self.load_model_filename))
+            if self.verbose: print (f'model parameters loaded from: {self.load_model_filename}')
+
+        if self.optimizer_name == 'Adam':
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+        else:
+            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
+
+    def save_model(self, epoch):
+
+        if self.verbose: print (f"\n\nEpoch={epoch}:") 
 
         #save the model
         trained_model_filename = f'{self.model_path}/trained_model.pt'
         torch.save(self.model.state_dict(), trained_model_filename)  
-        print (f'\ntrained model saved at:\n\t{trained_model_filename}\n')
+
+        if self.verbose: print (f'  trained model saved at:\n\t{trained_model_filename}')
 
         cv = self.colvar_model()
 
         trained_cv_script_filename = f'{self.model_path}/trained_cv_scripted.pt'
         torch.jit.script(cv).save(trained_cv_script_filename)
 
-        print (f'script model for CVs saved at:\n\t{trained_cv_script_filename}\n', flush=True)
+        if self.verbose: print (f'  script model for CVs saved at:\n\t{trained_cv_script_filename}\n', flush=True)
 
     def plot_scattered_cv_on_feature_space(self, epoch): 
 
@@ -98,7 +113,7 @@ class TrainingTask(object):
             fig, ax = plt.subplots()
             sc = ax.scatter(feature_data[:,0], feature_data[:,1], s=2.0, c=cv_vals[:,idx].detach().numpy(), cmap='jet')
 
-            ax.set_title(f'{idx+1}th dimension', fontsize=27)
+            ax.set_title(f'{idx+1}th CV', fontsize=27)
             ax.set_xlabel(r'{}'.format(self.output_feature_mapper.get_feature(0).get_name()), fontsize=25, labelpad=3, rotation=0)
             ax.set_xticks([-3, -2, -1, 0, 1, 2, 3])
             ax.set_yticks([-3, -2, -1, 0, 1, 2, 3])
@@ -108,7 +123,7 @@ class TrainingTask(object):
             cbar = fig.colorbar(sc, cax=cax)
             cbar.ax.tick_params(labelsize=20)
 
-            fig_name = f'{self.model_path}/scattered_{self.model_name}_{epoch}_{idx}.png'
+            fig_name = f'{self.model_path}/cv_scattered_{self.model_name}_{epoch}_{idx}.png'
             plt.savefig(fig_name, dpi=200, bbox_inches='tight')
             plt.close()
 
@@ -119,9 +134,9 @@ class AutoEncoderTask(TrainingTask):
     """Training task for autoencoder
     """
 
-    def __init__(self, args, traj_obj, pp_layer, model_path, histogram_feature_mapper=None, output_feature_mapper=None):
+    def __init__(self, args, traj_obj, pp_layer, model_path, histogram_feature_mapper=None, output_feature_mapper=None, verbose=True):
 
-        super(AutoEncoderTask, self).__init__(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper)
+        super(AutoEncoderTask, self).__init__(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper, verbose)
 
         # sizes of feedforward neural networks
         e_layer_dims = [self.feature_dim] + args.e_layer_dims + [self.k]
@@ -130,23 +145,16 @@ class AutoEncoderTask(TrainingTask):
         # define autoencoder
         self.model = AutoEncoder(e_layer_dims, d_layer_dims, args.activation()).to(device=self.device)
         # print the model
-        print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(self.feature_dim, self.k), self.model)
+        if self.verbose: print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(self.feature_dim, self.k), self.model)
 
-        if args.load_model_filename and os.path.isfile(args.load_model_filename): 
-            self.model.load_state_dict(torch.load(args.load_model_filename))
-            print (f'model parameters loaded from: {args.load_model_filename}')
-
-        if args.optimizer == 'Adam':
-            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        else:
-            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        self.init_model_and_optimizer()
 
         #--- prepare the data ---
         self.weights = torch.tensor(traj_obj.weights)
         self.feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory))
 
         # print information of trajectory
-        print ( '\nShape of trajectory data array:\n {}'.format(self.feature_traj.shape), flush=True )
+        if self.verbose: print ( '\nShape of trajectory data array:\n {}'.format(self.feature_traj.shape), flush=True )
 
     def colvar_model(self):
         return ann.MolANN(self.preprocessing_layer, self.model.encoder)
@@ -221,18 +229,18 @@ class AutoEncoderTask(TrainingTask):
             if self.output_features is not None :
                 self.plot_scattered_cv_on_feature_space(epoch)
 
-            if epoch % self.save_model_every_step == 0 :
-                self.save_model(epoch=epoch)
+            if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
+                self.save_model(epoch)
 
-        print ("\ntraining ends.\n") 
+        print ("\nTraining ends.\n") 
 
 class EigenFunctionTask(TrainingTask):
     """Training task for eigenfunctions 
     """
 
-    def __init__(self, args, traj_obj,  pp_layer, model_path, histogram_feature_mapper=None, output_feature_mapper=None):
+    def __init__(self, args, traj_obj,  pp_layer, model_path, histogram_feature_mapper=None, output_feature_mapper=None, verbose=True):
 
-        super(EigenFunctionTask, self).__init__(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper)
+        super(EigenFunctionTask, self).__init__(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper, verbose)
 
         self.alpha = args.alpha
         self.sort_eigvals_in_training = args.sort_eigvals_in_training
@@ -244,21 +252,22 @@ class EigenFunctionTask(TrainingTask):
 
         #--- prepare the data ---
         self.weights = torch.tensor(traj_obj.weights)
-        traj = torch.tensor(traj_obj.trajectory)
-
-        self.tot_dim = traj.shape[1] * 3 
-
-        # diagnoal matrix 
-        # the unit of eigenvalues given by Rayleigh quotients is ns^{-1}.
-        self.diag_coeff = torch.ones(self.tot_dim).to(self.device) * args.diffusion_coeff * 1e7 * self.beta
 
         layer_dims = [self.feature_dim] + args.layer_dims + [1]
 
         self.model = EigenFunction(layer_dims, self.k, args.activation()).to(self.device)
 
-        print ('\nEigenfunctions:\n', self.model, flush=True)
+        if self.verbose: print ('\nEigenfunctions:\n', self.model, flush=True)
 
-        print ('\nPrecomputing gradients of features...')
+        self.init_model_and_optimizer()
+
+        traj = torch.tensor(traj_obj.trajectory)
+        self.tot_dim = traj.shape[1] * 3 
+        # diagnoal matrix 
+        # the unit of eigenvalues given by Rayleigh quotients is ns^{-1}.
+        self.diag_coeff = torch.ones(self.tot_dim).to(self.device) * args.diffusion_coeff * 1e7 * self.beta
+
+        if self.verbose: print ('\nPrecomputing gradients of features...')
         traj.requires_grad_()
         self.feature_traj = self.preprocessing_layer(traj)
 
@@ -267,18 +276,10 @@ class EigenFunctionTask(TrainingTask):
 
         self.feature_traj = self.feature_traj.detach()
 
-        print ('  shape of feature_gradient vec:', self.feature_grad_vec.shape)
+        if self.verbose:
+            print ('  shape of feature_gradient vec:', self.feature_grad_vec.shape)
+            print ('Done\n', flush=True)
 
-        print ('Done\n', flush=True)
-
-        if args.load_model_filename and os.path.isfile(args.load_model_filename): 
-            self.model.load_state_dict(torch.load(args.load_model_filename))
-            print (f'Model parameters loaded from:\n\t {args.load_model_filename}')
-
-        if args.optimizer == 'Adam':
-            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        else:
-            self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
     def colvar_model(self):
         return ann.MolANN(self.preprocessing_layer, self.model)
@@ -409,8 +410,9 @@ class EigenFunctionTask(TrainingTask):
             if self.output_features is not None :
                 self.plot_scattered_cv_on_feature_space(epoch)
 
-            if epoch % self.save_model_every_step == 0 :
-                self.save_model(epoch=epoch)
+            if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
+                self.save_model(epoch)
 
-        print ("\ntraining ends.\n") 
+        print ("\nTraining ends.\n") 
+
 

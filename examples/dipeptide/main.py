@@ -15,7 +15,7 @@ import pandas as pd
 sys.path.append('../src/colvars/')
 from training_tasks import AutoEncoderTask, EigenFunctionTask 
 from trajectory import WeightedTrajectory
-from utils import Args
+from utils import TrainingArgs
 
 # +
 def set_all_seeds(seed):
@@ -28,7 +28,7 @@ def set_all_seeds(seed):
 def main():
 
     # read configuration parameters
-    args = Args()
+    args = TrainingArgs()
 
     print (f'===Computing Devices===')
     # CUDA support
@@ -71,7 +71,7 @@ def main():
     feature_list = feature_reader.read()
 
     if len(feature_list) == 0 : 
-        print ("Warning: no feature found! \n") 
+        print ("No feature found for histogram! \n") 
         histogram_feature_mapper = None
     else :
         histogram_feature_mapper = ann.FeatureLayer(feature_list, use_angle_value=True)
@@ -85,12 +85,13 @@ def main():
     feature_list= feature_reader.read()
     if len(feature_list) == 2 :
         output_feature_mapper = ann.FeatureLayer(feature_list, use_angle_value=True)
-        if output_feature_mapper.output_dimension() == 2 : # use it only if it is 2D
-            print (output_feature_mapper.get_feature_info())
-        else :
-            print (f'\nOutput feature mapper set to None, since 2d feature required for output.')
-            output_feature_mapper = None
+    else:
+        output_feature_mapper = None
+
+    if output_feature_mapper is not None and output_feature_mapper.output_dimension() == 2 : # use it only if it is 2D
+        print (output_feature_mapper.get_feature_info())
     else :
+        print (f'\nOutput feature mapper set to None, since 2d feature required for output.')
         output_feature_mapper = None
 
     # read features from file to define preprocessing
@@ -141,7 +142,7 @@ def main():
     else : # task_type: Eigenfunction
         prefix = f"{args.sys_name}-eigenfunction-" 
         model_path = os.path.join(args.model_save_dir, prefix + time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime()))
-        train_obj = EigenFunctionTask(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper)
+        train_obj = EigenFunctionTask(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper, True)
 
     if args.use_gpu :
         start = torch.cuda.Event(enable_timing=True)
