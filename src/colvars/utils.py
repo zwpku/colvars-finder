@@ -2,6 +2,7 @@ import torch
 import molann.ann as ann
 import configparser
 import os 
+import copy
 
 from openmm import unit
 
@@ -96,6 +97,16 @@ class EigenFunction(torch.nn.Module):
         assert layer_dims[-1] == 1, "each eigenfunction must be one-dimensional"
 
         self.eigen_funcs = torch.nn.ModuleList([ann.create_sequential_nn(layer_dims, activation) for idx in range(k)])
+
+    def forward(self, inp):
+        """TBA"""
+        return torch.cat([nn(inp) for nn in self.eigen_funcs], dim=1)
+
+# eigenfunction class
+class ReorderedEigenFunction(torch.nn.Module):
+    def __init__(self, eigenfunction_model, cvec):
+        super(ReorderedEigenFunction, self).__init__()
+        self.eigen_funcs = torch.nn.ModuleList([copy.deepcopy(eigenfunction_model.eigen_funcs[idx]) for idx in cvec])
 
     def forward(self, inp):
         """TBA"""

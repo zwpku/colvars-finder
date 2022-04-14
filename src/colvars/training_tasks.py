@@ -11,7 +11,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 import os
 
-from utils import AutoEncoder, EigenFunction
+from utils import AutoEncoder, EigenFunction, ReorderedEigenFunction
 
 class TrainingTask(object):
     """class for a training task
@@ -105,7 +105,7 @@ class TrainingTask(object):
 
         X = self.feature_traj[index,:].to(self.device)
         feature_data = self.output_features[index,:]
-        cv_vals = self.cv_on_data(X).cpu()
+        cv_vals = self.cv_on_feature_data(X).cpu()
 
         k = cv_vals.size(1)
 
@@ -165,7 +165,7 @@ class AutoEncoderTask(TrainingTask):
         # Evaluate loss
         return (weight * torch.sum((out-X)**2, dim=1)).sum() / weight.sum()
 
-    def cv_on_data(self, X):
+    def cv_on_feature_data(self, X):
         return self.model.encoder(X)
 
     def train(self):
@@ -282,9 +282,10 @@ class EigenFunctionTask(TrainingTask):
 
 
     def colvar_model(self):
-        return ann.MolANN(self.preprocessing_layer, self.model)
+        reordered_model = ReorderedEigenFunction(self.model, self.cvec)
+        return ann.MolANN(self.preprocessing_layer, reordered_model)
 
-    def cv_on_data(self, X):
+    def cv_on_feature_data(self, X):
         return self.model(X)[:,self.cvec]
 
     def loss_func(self, X, weight, f_grad):
