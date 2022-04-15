@@ -52,12 +52,10 @@ if not os.path.exists(sampling_path):
 
 traj_dcd_filename = config['Sampling']['traj_dcd_filename']
 csv_filename = config['Sampling']['csv_filename']
-traj_weight_filename = config['Sampling']['traj_weight_filename']
 
 # add path to filenames
 traj_dcd_filename = os.path.join(sampling_path, traj_dcd_filename)
 csv_filename=os.path.join(sampling_path, csv_filename)
-traj_weight_filename = os.path.join(sampling_path, traj_weight_filename)
 
 report_interval_dcd = config['Sampling'].getint('report_interval_dcd')
 report_interval_stdout = config['Sampling'].getint('report_interval_stdout')
