@@ -64,19 +64,24 @@ class AutoEncoder(torch.nn.Module):
 class AutoEncoderTask(TrainingTask):
     """Training task for autoencoder
     """
+    def __init__(self, traj_obj, 
+                        pp_layer, 
+                        learning_rate, 
+                        model,
+                        load_model_filename,
+                        model_save_dir, 
+                        save_model_every_step, 
+                        model_path, 
+                        k=1,
+                        batch_size=1000, 
+                        num_epochs=10,
+                        test_ratio=0.2, 
+                        optimizer_name='Adam', 
+                        device= torch.device('cpu'),
+                        verbose=True):
 
-    def __init__(self, args, traj_obj, pp_layer, model_path, histogram_feature_mapper=None, output_feature_mapper=None, verbose=True):
-
-        super(AutoEncoderTask, self).__init__(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper, verbose)
-
-        # sizes of feedforward neural networks
-        e_layer_dims = [self.feature_dim] + args.e_layer_dims + [self.k]
-        d_layer_dims = [self.k] + args.d_layer_dims + [self.feature_dim]
-
-        # define autoencoder
-        self.model = AutoEncoder(e_layer_dims, d_layer_dims, args.activation()).to(device=self.device)
-        # print the model
-        if self.verbose: print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(self.feature_dim, self.k), self.model)
+        super(AutoEncoderTask, self).__init__( traj_obj, pp_layer, learning_rate, model, load_model_filename, model_save_dir, 
+                                save_model_every_step, model_path, k, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
 
         self.init_model_and_optimizer()
 

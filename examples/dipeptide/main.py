@@ -18,7 +18,6 @@ sys.path.append('../')
 from colvarsfinder.core.autoencoder import AutoEncoderTask
 from colvarsfinder.core.eigenfunction import EigenFunctionTask 
 from colvarsfinder.core.trajectory import WeightedTrajectory
-from colvarsfinder.core.base_task import TrainingArgs
 
 # +
 def set_all_seeds(seed):
@@ -27,6 +26,89 @@ def set_all_seeds(seed):
         torch.cuda.manual_seed_all(seed)
         np.random.seed(seed)
     random.seed(seed)
+
+class TrainingArgs(object):
+    r"""TBA
+
+    Parameters
+    ----------
+
+    Attributes
+    ----------
+
+    Example
+    -------
+    """
+
+    def __init__(self, config_filename='params.cfg'):
+
+        config = configparser.ConfigParser()
+        config.read(config_filename)
+
+        self.sys_name = config['System'].get('sys_name')
+        self.pdb_filename = config['System'].get('pdb_filename')
+        self.temp = config['System'].getfloat('sys_temperature')
+
+        sampling_path = config['Sampling'].get('sampling_path')
+        self.traj_dcd_filename = config['Sampling'].get('traj_dcd_filename')
+        self.traj_weight_filename = config['Sampling'].get('traj_weight_filename')
+
+        # add path to filenames
+        self.traj_dcd_filename = os.path.join(sampling_path, self.traj_dcd_filename)
+        self.traj_weight_filename = os.path.join(sampling_path, self.traj_weight_filename)
+
+         # unit: kJ/mol
+        kT = self.temp * unit.kelvin * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA / unit.kilojoule_per_mole
+        self.beta = 1.0 / kT
+        
+        #set training parameters
+        self.cutoff_weight_min = config['Training'].getfloat('cutoff_weight_min')
+        self.cutoff_weight_max = config['Training'].getfloat('cutoff_weight_max')
+
+        self.use_gpu =config['Training'].getboolean('use_gpu')
+        self.batch_size = config['Training'].getint('batch_size')
+        self.num_epochs = config['Training'].getint('num_epochs')
+        self.test_ratio = config['Training'].getfloat('test_ratio')
+        self.learning_rate = config['Training'].getfloat('learning_rate')
+        self.optimizer = config['Training'].get('optimizer') # 'Adam' or 'SGD'
+        self.load_model_filename =  config['Training'].get('load_model_filename')
+        self.model_save_dir = config['Training'].get('model_save_dir') 
+        self.save_model_every_step = config['Training'].getint('save_model_every_step')
+        self.task_type = config['Training'].get('task_type')
+
+        if self.task_type == 'Autoencoder' :
+            # encoded dimension
+            self.k = config['AutoEncoder'].getint('encoded_dim')
+            self.e_layer_dims = [int(x) for x in config['AutoEncoder'].get('encoder_hidden_layer_dims').split(',')]
+            self.d_layer_dims = [int(x) for x in config['AutoEncoder'].get('decoder_hidden_layer_dims').split(',')]
+            self.activation_name = config['AutoEncoder'].get('activation') 
+        else :
+            if self.task_type == 'Eigenfunction':
+                self.k = config['EigenFunction'].getint('num_eigenfunction')
+                self.layer_dims = [int(x) for x in config['EigenFunction'].get('hidden_layer_dims').split(',')]
+                self.activation_name = config['EigenFunction'].get('activation') 
+                self.alpha = config['EigenFunction'].getfloat('penalty_alpha')
+                self.eig_w = [float(x) for x in config['EigenFunction'].get('eig_w').split(',')]
+                self.diffusion_coeff = config['EigenFunction'].getfloat('diffusion_coeff')
+                self.sort_eigvals_in_training = config['EigenFunction'].getboolean('sort_eigvals_in_training')
+            else :
+                raise ValueError(f'Task {self.task_type} not implemented!  Possible values: Autoencoder, Eigenfunction.')
+
+        self.activation = getattr(torch.nn, self.activation_name) 
+
+        self.align_selector = config['Training'].get('align_mda_selector')
+        self.feature_file = config['Training'].get('feature_file')
+        self.seed = config['Training'].getint('seed')
+        self.num_scatter_states = config['Training'].getint('num_scatter_states')
+
+        # CUDA support
+        if torch.cuda.is_available() and self.use_gpu:
+            self.device = torch.device('cuda')
+        else:
+            self.device = torch.device('cpu')
+            self.use_gpu = False
+
+        print (f'\n[Info] Parameters loaded from: {config_filename}\n', flush=True)
 
 def main():
 
@@ -67,35 +149,6 @@ def main():
 
     print ('==============Features===================\n')
     print ('Features file: {}'.format(args.feature_file)) 
-
-    print ('\nFeatures for histogram: \n')
-    # read features for histogram plot
-    feature_reader = FeatureFileReader(args.feature_file, 'Histogram', universe)
-    feature_list = feature_reader.read()
-
-    if len(feature_list) == 0 : 
-        print ("No feature found for histogram! \n") 
-        histogram_feature_mapper = None
-    else :
-        histogram_feature_mapper = ann.FeatureLayer(feature_list, use_angle_value=True)
-        print (histogram_feature_mapper.get_feature_info())
-        # make sure each feature is one-dimensional
-        assert histogram_feature_mapper.output_dimension() == len(feature_list), "Features for histogram are incorrect, output of each feature must be one-dimensional!" 
-
-    print ('\nFeatures for ouptut: \n')
-    # features to define a 2d space for output
-    feature_reader = FeatureFileReader(args.feature_file, 'Output', universe) 
-    feature_list= feature_reader.read()
-    if len(feature_list) == 2 :
-        output_feature_mapper = ann.FeatureLayer(feature_list, use_angle_value=True)
-    else:
-        output_feature_mapper = None
-
-    if output_feature_mapper is not None and output_feature_mapper.output_dimension() == 2 : # use it only if it is 2D
-        print (output_feature_mapper.get_feature_info())
-    else :
-        print (f'\nOutput feature mapper set to None, since 2d feature required for output.')
-        output_feature_mapper = None
 
     # read features from file to define preprocessing
     feature_reader = FeatureFileReader(args.feature_file, 'Preprocessing', universe)
@@ -140,11 +193,27 @@ def main():
         # path to store log data
         prefix = f"{args.sys_name}-autoencoder-" 
         model_path = os.path.join(args.model_save_dir, prefix + time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime()))
+
+        # sizes of feedforward neural networks
+        e_layer_dims = [self.feature_dim] + args.e_layer_dims + [self.k]
+        d_layer_dims = [self.k] + args.d_layer_dims + [self.feature_dim]
+
+        # define autoencoder
+        self.model = AutoEncoder(e_layer_dims, d_layer_dims, args.activation()).to(device=self.device)
+        # print the model
+        if self.verbose: print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(self.feature_dim, self.k), self.model)
+
         # define training task
         train_obj = AutoEncoderTask(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper)
     else : # task_type: Eigenfunction
         prefix = f"{args.sys_name}-eigenfunction-" 
         model_path = os.path.join(args.model_save_dir, prefix + time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime()))
+        layer_dims = [self.feature_dim] + args.layer_dims + [1]
+        self.model = EigenFunction(layer_dims, self.k, args.activation()).to(self.device)
+        if self.verbose: print ('\nEigenfunctions:\n', self.model, flush=True)
+        # diagnoal matrix 
+        # the unit of eigenvalues given by Rayleigh quotients is ns^{-1}.
+        self.diag_coeff = torch.ones(self.tot_dim).to(self.device) * args.diffusion_coeff * 1e7 * self.beta
         train_obj = EigenFunctionTask(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper, True)
 
     if args.use_gpu :

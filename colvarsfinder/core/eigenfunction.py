@@ -83,13 +83,36 @@ class EigenFunctionTask(TrainingTask):
     """Training task for eigenfunctions 
     """
 
-    def __init__(self, args, traj_obj,  pp_layer, model_path, histogram_feature_mapper=None, output_feature_mapper=None, verbose=True):
+    def __init__(self, traj_obj, 
+                        pp_layer, 
+                        learning_rate, 
+                        model,
+                        load_model_filename,
+                        model_save_dir, 
+                        save_model_every_step, 
+                        model_path, 
+                        beta, 
+                        diag_coeff,
+                        alpha_vec,
+                        eig_weights, 
+                        sort_eigvals_in_training=True, 
+                        k=1,
+                        batch_size=1000, 
+                        num_epochs=10,
+                        test_ratio=0.2, 
+                        optimizer_name='Adam', 
+                        device= torch.device('cpu'),
+                        verbose=True):
 
-        super(EigenFunctionTask, self).__init__(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper, verbose)
+        super(EigenFunctionTask, self).__init__( traj_obj, pp_layer, learning_rate, model, load_model_filename, model_save_dir, 
+                                save_model_every_step, model_path, k, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
 
-        self.alpha = args.alpha
-        self.sort_eigvals_in_training = args.sort_eigvals_in_training
-        self.eig_w = args.eig_w
+        self.beta = beta
+        self.alpha = alpha_vec
+        self.sort_eigvals_in_training = sort_eigvals_in_training
+        self.eig_w = eig_weights
+        self.model = model
+        self.diag_coeff = diag_coeff
 
         # list of (i,j) pairs in the penalty term
         self.ij_list = list(itertools.combinations(range(self.k), 2))
@@ -98,25 +121,19 @@ class EigenFunctionTask(TrainingTask):
         #--- prepare the data ---
         self.weights = torch.tensor(traj_obj.weights)
 
-        layer_dims = [self.feature_dim] + args.layer_dims + [1]
-
-        self.model = EigenFunction(layer_dims, self.k, args.activation()).to(self.device)
-
         if self.verbose: print ('\nEigenfunctions:\n', self.model, flush=True)
 
         self.init_model_and_optimizer()
 
         traj = torch.tensor(traj_obj.trajectory)
         self.tot_dim = traj.shape[1] * 3 
-        # diagnoal matrix 
-        # the unit of eigenvalues given by Rayleigh quotients is ns^{-1}.
-        self.diag_coeff = torch.ones(self.tot_dim).to(self.device) * args.diffusion_coeff * 1e7 * self.beta
 
         if self.verbose: print ('\nPrecomputing gradients of features...')
         traj.requires_grad_()
         self.feature_traj = self.preprocessing_layer(traj)
 
-        f_grad_vec = [torch.autograd.grad(outputs=self.feature_traj[:,idx].sum(), inputs=traj, retain_graph=True)[0] for idx in range(self.feature_dim)]
+        f_grad_vec = [torch.autograd.grad(outputs=self.feature_traj[:,idx].sum(), inputs=traj, retain_graph=True)[0] for idx in range(self.preprocessing_layer.output_dimension())]
+
         self.feature_grad_vec = torch.stack([f_grad.reshape((-1, self.tot_dim)) for f_grad in f_grad_vec], dim=2).detach().to(self.device)
 
         self.feature_traj = self.feature_traj.detach()
