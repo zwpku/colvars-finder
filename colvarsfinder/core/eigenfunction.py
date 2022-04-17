@@ -31,6 +31,7 @@ from sklearn.model_selection import train_test_split
 import pandas as pd
 from tqdm import tqdm
 import os
+import copy
 
 from colvarsfinder.core.base import TrainingTask
 
@@ -72,7 +73,7 @@ class _ReorderedEigenFunction(torch.nn.Module):
     -------
     """
     def __init__(self, eigenfunction_model, cvec):
-        super(ReorderedEigenFunction, self).__init__()
+        super(_ReorderedEigenFunction, self).__init__()
         self.eigen_funcs = torch.nn.ModuleList([copy.deepcopy(eigenfunction_model.eigen_funcs[idx]) for idx in cvec])
 
     def forward(self, inp):
@@ -269,11 +270,5 @@ class EigenFunctionTask(TrainingTask):
             for idx in range(self.k):
                 self.writer.add_scalar(f'{idx}th eigenvalue', torch.mean(torch.stack(test_eig_vals)[:,idx]), epoch)
 
-            if self.output_features is not None :
-                self.plot_scattered_cv_on_feature_space(epoch)
-
             if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
                 self.save_model(epoch)
-
-        print ("\nTraining ends.\n") 
-

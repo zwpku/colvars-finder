@@ -18,8 +18,8 @@ import argparse
 #sys.path.append('../colvarsfinder/core/')
 sys.path.append('../')
 
-from colvarsfinder.core.autoencoder import AutoEncoderTask
-from colvarsfinder.core.eigenfunction import EigenFunctionTask 
+from colvarsfinder.core.autoencoder import AutoEncoder, AutoEncoderTask
+from colvarsfinder.core.eigenfunction import EigenFunction, EigenFunctionTask 
 from colvarsfinder.core.trajectory import WeightedTrajectory
 from colvarsfinder.sampler.LangevinIntegrator import LangevinSampler, calc_weights
 
@@ -41,9 +41,9 @@ class Params(object):
             self.pdb_filename = config['System']['pdb_filename']
             self.n_steps = config['Sampling'].getint('n_steps')
             self.pre_steps = config['Sampling'].getint('pre_steps')
-            self.step_size = config['Sampling'].getfloat('step_size') 
-            self.frictionCoeff = config['Sampling'].getfloat('friction') 
-            self.sampling_temp = config['Sampling'].getfloat('sampling_temperature') 
+            self.step_size = config['Sampling'].getfloat('step_size') * unit.femtoseconds
+            self.frictionCoeff = config['Sampling'].getfloat('friction') / unit.picosecond
+            self.sampling_temp = config['Sampling'].getfloat('sampling_temperature') * unit.kelvin
             self.sampling_path = config['Sampling'].get('sampling_path')
 
             self.traj_dcd_filename = config['Sampling']['traj_dcd_filename']
@@ -55,8 +55,8 @@ class Params(object):
             self.plumed_script = config['Sampling'].get('plumed_script')
 
         if task == 'calc_weights':
-            self.sys_temp = config['System'].getfloat('sys_temperature') 
-            self.sampling_temp = config['Sampling'].getfloat('sampling_temperature') 
+            self.sys_temp = config['System'].getfloat('sys_temperature') * unit.kelvin
+            self.sampling_temp = config['Sampling'].getfloat('sampling_temperature') * unit.kelvin
 
             sampling_path = config['Sampling'].get('sampling_path')
             csv_filename = config['Sampling']['csv_filename']
@@ -68,97 +68,74 @@ class Params(object):
             self.csv_filename=os.path.join(sampling_path, csv_filename)
             self.traj_weight_filename = os.path.join(sampling_path, traj_weight_filename)
 
-class TrainingArgs(object):
-    r"""TBA
+        if task == 'training':
+            self.sys_name = config['System'].get('sys_name')
+            self.pdb_filename = config['System'].get('pdb_filename')
+            self.temp = config['System'].getfloat('sys_temperature') * unit.kelvin
+            sampling_path = config['Sampling'].get('sampling_path')
+            self.traj_dcd_filename = config['Sampling'].get('traj_dcd_filename')
+            self.traj_weight_filename = config['Sampling'].get('traj_weight_filename')
 
-    Parameters
-    ----------
+            # add path to filenames
+            self.traj_dcd_filename = os.path.join(sampling_path, self.traj_dcd_filename)
+            self.traj_weight_filename = os.path.join(sampling_path, self.traj_weight_filename)
 
-    Attributes
-    ----------
+             # unit: kJ/mol
+            kT = self.temp * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA / unit.kilojoule_per_mole
+            self.beta = 1.0 / kT
+            
+            #set training parameters
+            self.cutoff_weight_min = config['Training'].getfloat('cutoff_weight_min')
+            self.cutoff_weight_max = config['Training'].getfloat('cutoff_weight_max')
 
-    Example
-    -------
-    """
+            self.use_gpu =config['Training'].getboolean('use_gpu')
+            self.batch_size = config['Training'].getint('batch_size')
+            self.num_epochs = config['Training'].getint('num_epochs')
+            self.test_ratio = config['Training'].getfloat('test_ratio')
+            self.learning_rate = config['Training'].getfloat('learning_rate')
+            self.optimizer_name = config['Training'].get('optimizer') # 'Adam' or 'SGD'
+            self.load_model_filename =  config['Training'].get('load_model_filename')
+            self.model_save_dir = config['Training'].get('model_save_dir') 
+            self.save_model_every_step = config['Training'].getint('save_model_every_step')
+            self.task_type = config['Training'].get('task_type')
 
-    def __init__(self, config_filename='params.cfg'):
-
-        config = configparser.ConfigParser()
-        config.read(config_filename)
-
-        dd = dict(config['System'])
-        print (dd['sys_name'])
-        exit(0)
-
-        self.sys_name = config['System'].get('sys_name')
-        self.pdb_filename = config['System'].get('pdb_filename')
-        self.temp = config['System'].getfloat('sys_temperature')
-
-        sampling_path = config['Sampling'].get('sampling_path')
-        self.traj_dcd_filename = config['Sampling'].get('traj_dcd_filename')
-        self.traj_weight_filename = config['Sampling'].get('traj_weight_filename')
-
-        # add path to filenames
-        self.traj_dcd_filename = os.path.join(sampling_path, self.traj_dcd_filename)
-        self.traj_weight_filename = os.path.join(sampling_path, self.traj_weight_filename)
-
-         # unit: kJ/mol
-        kT = self.temp * unit.kelvin * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA / unit.kilojoule_per_mole
-        self.beta = 1.0 / kT
-        
-        #set training parameters
-        self.cutoff_weight_min = config['Training'].getfloat('cutoff_weight_min')
-        self.cutoff_weight_max = config['Training'].getfloat('cutoff_weight_max')
-
-        self.use_gpu =config['Training'].getboolean('use_gpu')
-        self.batch_size = config['Training'].getint('batch_size')
-        self.num_epochs = config['Training'].getint('num_epochs')
-        self.test_ratio = config['Training'].getfloat('test_ratio')
-        self.learning_rate = config['Training'].getfloat('learning_rate')
-        self.optimizer = config['Training'].get('optimizer') # 'Adam' or 'SGD'
-        self.load_model_filename =  config['Training'].get('load_model_filename')
-        self.model_save_dir = config['Training'].get('model_save_dir') 
-        self.save_model_every_step = config['Training'].getint('save_model_every_step')
-        self.task_type = config['Training'].get('task_type')
-
-        if self.task_type == 'Autoencoder' :
-            # encoded dimension
-            self.k = config['AutoEncoder'].getint('encoded_dim')
-            self.e_layer_dims = [int(x) for x in config['AutoEncoder'].get('encoder_hidden_layer_dims').split(',')]
-            self.d_layer_dims = [int(x) for x in config['AutoEncoder'].get('decoder_hidden_layer_dims').split(',')]
-            self.activation_name = config['AutoEncoder'].get('activation') 
-        else :
-            if self.task_type == 'Eigenfunction':
-                self.k = config['EigenFunction'].getint('num_eigenfunction')
-                self.layer_dims = [int(x) for x in config['EigenFunction'].get('hidden_layer_dims').split(',')]
-                self.activation_name = config['EigenFunction'].get('activation') 
-                self.alpha = config['EigenFunction'].getfloat('penalty_alpha')
-                self.eig_w = [float(x) for x in config['EigenFunction'].get('eig_w').split(',')]
-                self.diffusion_coeff = config['EigenFunction'].getfloat('diffusion_coeff')
-                self.sort_eigvals_in_training = config['EigenFunction'].getboolean('sort_eigvals_in_training')
+            if self.task_type == 'Autoencoder' :
+                # encoded dimension
+                self.k = config['AutoEncoder'].getint('encoded_dim')
+                self.e_layer_dims = [int(x) for x in config['AutoEncoder'].get('encoder_hidden_layer_dims').split(',')]
+                self.d_layer_dims = [int(x) for x in config['AutoEncoder'].get('decoder_hidden_layer_dims').split(',')]
+                self.activation_name = config['AutoEncoder'].get('activation') 
             else :
-                raise ValueError(f'Task {self.task_type} not implemented!  Possible values: Autoencoder, Eigenfunction.')
+                if self.task_type == 'Eigenfunction':
+                    self.k = config['EigenFunction'].getint('num_eigenfunction')
+                    self.layer_dims = [int(x) for x in config['EigenFunction'].get('hidden_layer_dims').split(',')]
+                    self.activation_name = config['EigenFunction'].get('activation') 
+                    self.alpha_vec = config['EigenFunction'].getfloat('penalty_alpha')
+                    self.eig_w = [float(x) for x in config['EigenFunction'].get('eig_w').split(',')]
+                    self.diffusion_coeff = config['EigenFunction'].getfloat('diffusion_coeff')
+                    self.sort_eigvals_in_training = config['EigenFunction'].getboolean('sort_eigvals_in_training')
+                else :
+                    raise ValueError(f'Task {self.task_type} not implemented!  Possible values: Autoencoder, Eigenfunction.')
 
-        self.activation = getattr(torch.nn, self.activation_name) 
+            self.activation = getattr(torch.nn, self.activation_name) 
 
-        self.align_selector = config['Training'].get('align_mda_selector')
-        self.feature_file = config['Training'].get('feature_file')
-        self.seed = config['Training'].getint('seed')
-        self.num_scatter_states = config['Training'].getint('num_scatter_states')
+            self.align_selector = config['Training'].get('align_mda_selector')
+            self.feature_file = config['Training'].get('feature_file')
+            self.seed = config['Training'].getint('seed')
+            self.verbose = config['Training'].getboolean('verbose')
+            if self.verbose is None :
+                self.verbose = True 
 
-        # CUDA support
-        if torch.cuda.is_available() and self.use_gpu:
-            self.device = torch.device('cuda')
-        else:
-            self.device = torch.device('cpu')
-            self.use_gpu = False
+            # CUDA support
+            if torch.cuda.is_available() and self.use_gpu:
+                self.device = torch.device('cuda')
+            else:
+                self.device = torch.device('cpu')
+                self.use_gpu = False
 
         print (f'\n[Info] Parameters loaded from: {config_filename}\n', flush=True)
 
 def train(args):
-
-    # read configuration parameters
-    args = TrainingArgs()
 
     print (f'===Computing Devices===')
     # CUDA support
@@ -232,34 +209,48 @@ def train(args):
     # load the trajectory data from DCD file
     traj_obj = WeightedTrajectory(universe, args.traj_weight_filename, args.cutoff_weight_min, args.cutoff_weight_max)
 
+    feature_dim = pp_layer.output_dimension()
+
     print ('================End of Trajectory Info=================\n')
+    
+    # path to store log data
+    prefix = f"{args.sys_name}-{args.task_type}-" 
+    model_path = os.path.join(args.model_save_dir, prefix + time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime()))
 
     if args.task_type == 'Autoencoder' :
-        # path to store log data
-        prefix = f"{args.sys_name}-autoencoder-" 
-        model_path = os.path.join(args.model_save_dir, prefix + time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime()))
 
         # sizes of feedforward neural networks
-        e_layer_dims = [self.feature_dim] + args.e_layer_dims + [self.k]
-        d_layer_dims = [self.k] + args.d_layer_dims + [self.feature_dim]
-
+        e_layer_dims = [feature_dim] + args.e_layer_dims + [args.k]
+        d_layer_dims = [args.k] + args.d_layer_dims + [feature_dim]
         # define autoencoder
-        self.model = AutoEncoder(e_layer_dims, d_layer_dims, args.activation()).to(device=self.device)
+        model = AutoEncoder(e_layer_dims, d_layer_dims, args.activation()).to(device=args.device)
+
         # print the model
-        if self.verbose: print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(self.feature_dim, self.k), self.model)
+        if args.verbose: print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(feature_dim, args.k), model)
 
         # define training task
-        train_obj = AutoEncoderTask(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper)
+        train_obj = AutoEncoderTask(traj_obj, pp_layer, args.learning_rate, model, args.load_model_filename, args.model_save_dir,
+                args.save_model_every_step, model_path, args.k, args.batch_size, args.num_epochs, args.test_ratio,
+                args.optimizer_name, args.device, args.verbose)
+
     else : # task_type: Eigenfunction
-        prefix = f"{args.sys_name}-eigenfunction-" 
-        model_path = os.path.join(args.model_save_dir, prefix + time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime()))
-        layer_dims = [self.feature_dim] + args.layer_dims + [1]
-        self.model = EigenFunction(layer_dims, self.k, args.activation()).to(self.device)
-        if self.verbose: print ('\nEigenfunctions:\n', self.model, flush=True)
+
+        layer_dims = [feature_dim] + args.layer_dims + [1]
+        model = EigenFunction(layer_dims, args.k, args.activation()).to(args.device)
+
+        if args.verbose: print ('\nEigenfunctions:\n', model, flush=True)
+
+        tot_dim = universe.atoms.n_atoms * 3
         # diagnoal matrix 
         # the unit of eigenvalues given by Rayleigh quotients is ns^{-1}.
-        self.diag_coeff = torch.ones(self.tot_dim).to(self.device) * args.diffusion_coeff * 1e7 * self.beta
-        train_obj = EigenFunctionTask(args, traj_obj, pp_layer, model_path, histogram_feature_mapper, output_feature_mapper, True)
+        diag_coeff = torch.ones(tot_dim).to(args.device) * args.diffusion_coeff * 1e7 * args.beta
+
+        train_obj = EigenFunctionTask(traj_obj, pp_layer, args.learning_rate,
+                model, args.load_model_filename, args.model_save_dir,
+                args.save_model_every_step, model_path, args.beta, diag_coeff,
+                args.alpha_vec, args.eig_w, args.sort_eigvals_in_training,
+                args.k, args.batch_size, args.num_epochs, args.test_ratio,
+                args.optimizer_name, args.device, args.verbose)
 
     if args.use_gpu :
         start = torch.cuda.Event(enable_timing=True)
@@ -276,13 +267,15 @@ def train(args):
         train_obj.train()
         print ('Runtime : {:.2f}s\n'.format(timeit.default_timer() - start) )
 
+    print ("\nTraining ends.\n") 
+
 if __name__ == "__main__":
 
     if len(sys.argv) != 2 or sys.argv[1] not in ['sampling', 'calc_weights', 'training'] :
         print (f'Usage:\n' \
-                '  1. Generate trajectory data: \n\t./main.py sampling\n' \
-                '  2. Calculate weights of trajectory data: \n\t./main.py calc_weights\n' \
-                '  3. Learn CVs: \n\t./main.py training')
+                '  1. To generate trajectory data: \n\t./main.py sampling\n' \
+                '  2. To calculate weights of trajectory data: \n\t./main.py calc_weights\n' \
+                '  3. To learn CVs: \n\t./main.py training')
     else :
         task = sys.argv[1]
         args = Params(task)

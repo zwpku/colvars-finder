@@ -162,11 +162,6 @@ class AutoEncoderTask(TrainingTask):
             self.writer.add_scalar('Loss/train', torch.mean(torch.tensor(train_loss)), epoch)
             self.writer.add_scalar('Loss/test', torch.mean(torch.tensor(test_loss)), epoch)
 
-            if self.output_features is not None :
-                self.plot_scattered_cv_on_feature_space(epoch)
-
             if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
                 self.save_model(epoch)
-
-        print ("\nTraining ends.\n") 
 
