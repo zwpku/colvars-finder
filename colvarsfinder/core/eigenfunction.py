@@ -32,7 +32,7 @@ import pandas as pd
 from tqdm import tqdm
 import os
 
-from colvarsfinder.core.base_task import TrainingTask
+from colvarsfinder.core.base import TrainingTask
 
 # eigenfunction class
 class EigenFunction(torch.nn.Module):
@@ -59,7 +59,7 @@ class EigenFunction(torch.nn.Module):
         return torch.cat([nn(inp) for nn in self.eigen_funcs], dim=1)
 
 # eigenfunction class
-class ReorderedEigenFunction(torch.nn.Module):
+class _ReorderedEigenFunction(torch.nn.Module):
     r"""TBA
 
     Parameters
@@ -143,7 +143,7 @@ class EigenFunctionTask(TrainingTask):
             print ('Done\n', flush=True)
 
     def colvar_model(self):
-        reordered_model = ReorderedEigenFunction(self.model, self.cvec)
+        reordered_model = _ReorderedEigenFunction(self.model, self.cvec)
         return ann.MolANN(self.preprocessing_layer, reordered_model)
 
     def cv_on_feature_data(self, X):

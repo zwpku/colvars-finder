@@ -33,7 +33,7 @@ import pandas as pd
 from tqdm import tqdm
 import os
 
-from colvarsfinder.core.base_task import TrainingTask
+from colvarsfinder.core.base import TrainingTask
 
 # autoencoder class 
 class AutoEncoder(torch.nn.Module):

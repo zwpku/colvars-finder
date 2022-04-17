@@ -1,22 +1,4 @@
-#!/usr/bin/env python
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,py:light
-#     text_representation:
-#       extension: .py
-#       format_name: light
-#       format_version: '1.5'
-#       jupytext_version: 1.13.4
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
-# ## Generate MD trajectory data using OpenMM 
-
-# +
+# Generate MD trajectory data using OpenMM 
 import math
 from random import random, randint
 import numpy as np
@@ -25,95 +7,112 @@ import datetime
 import os, sys
 import warnings
 from sys import stdout
-import matplotlib.pyplot as plt
-import configparser
 import pandas as pd
 
 # import openmm
 from openmm import *
 from openmm.app import *
-from openmmplumed import PlumedForce
-# -
-
-# ### set parameters
-
-config = configparser.ConfigParser()
-config.read('params.cfg')
-pdb_filename = config['System']['pdb_filename']
-n_steps = config['Sampling'].getint('n_steps')
-pre_steps = config['Sampling'].getint('pre_steps')
-step_size = config['Sampling'].getfloat('step_size') * unit.femtoseconds
-frictionCoeff = config['Sampling'].getfloat('friction') / unit.picosecond
-sampling_temp = config['Sampling'].getfloat('sampling_temperature') * unit.kelvin
-
-sampling_path = config['Sampling'].get('sampling_path')
-if not os.path.exists(sampling_path):
-    os.makedirs(sampling_path)
-
-traj_dcd_filename = config['Sampling']['traj_dcd_filename']
-csv_filename = config['Sampling']['csv_filename']
-
-# add path to filenames
-traj_dcd_filename = os.path.join(sampling_path, traj_dcd_filename)
-csv_filename=os.path.join(sampling_path, csv_filename)
-
-report_interval_dcd = config['Sampling'].getint('report_interval_dcd')
-report_interval_stdout = config['Sampling'].getint('report_interval_stdout')
-report_interval_csv = config['Sampling'].getint('report_interval_csv')
-use_plumed_script = config['Sampling'].getboolean('use_plumed_script')
-plumed_script = config['Sampling'].get('plumed_script')
-
 
 # ### MD simulation
 
-# +
+def LangevinSampler(pdb_filename, n_steps, sampling_temp, sampling_path, pre_steps=0, step_size=1.0,
+        frictionCoeff=1.0,  traj_dcd_filename='traj.dcd', csv_filename='output.csv', report_interval_dcd=100,
+        report_interval_stdout=100, report_interval_csv=100, forcefield=None, plumed_script=None):
 
-print (f'\nSampling temperature: {sampling_temp}')
-print ( 'Directory to save trajectory ouptuts: %s' % sampling_path)
+    print (f'\nSampling temperature: {sampling_temp}')
+    print ( 'Directory to save trajectory ouptuts: %s' % sampling_path)
 
-# prepare before simulation
-pdb = PDBFile(pdb_filename)
-forcefield = ForceField('amber14-all.xml')
+    step_size = step_size * unit.femtoseconds
+    frictionCoeff = frictionCoeff / unit.picosecond
+    sampling_temp = sampling_temp * unit.kelvin
+    # add path to filenames
+    traj_dcd_filename = os.path.join(sampling_path, traj_dcd_filename)
+    csv_filename=os.path.join(sampling_path, csv_filename)
 
-system = forcefield.createSystem(pdb.topology, nonbondedCutoff=2*unit.nanometer, constraints=HBonds)
+    # prepare before simulation
+    pdb = PDBFile(pdb_filename)
 
-if use_plumed_script :
-    print ('plumed script: %s' % plumed_script)
-    system.addForce(PlumedForce(plumed_script))
+    if forcefield is None :
+        forcefield = ForceField('amber14-all.xml')
 
-integrator = LangevinIntegrator(sampling_temp, frictionCoeff, step_size)
+    system = forcefield.createSystem(pdb.topology, nonbondedCutoff=2*unit.nanometer, constraints=HBonds)
 
-simulation = Simulation(pdb.topology, system, integrator)
-simulation.context.setPositions(pdb.positions)
+    if plumed_script is not None :
+        from openmmplumed import PlumedForce
+        print ('plumed script: %s' % plumed_script)
+        system.addForce(PlumedForce(plumed_script))
 
-platform = simulation.context.getPlatform()
-print ("\nUsing OpenMM platform: %s\n" % platform.getName())
+    integrator = LangevinIntegrator(sampling_temp, frictionCoeff, step_size)
 
-print ('\nStep 1: Energy minimization...', end='')
-simulation.minimizeEnergy()
-print ('done.\n')
-print ('Step 2: Run {} steps before recording statistics...'.format(pre_steps), end='', flush=True)
-simulation.step(pre_steps)
-print ('done.\n')
-# registrate reporter for output
-simulation.reporters = []
+    simulation = Simulation(pdb.topology, system, integrator)
+    simulation.context.setPositions(pdb.positions)
 
-simulation.reporters.append(DCDReporter(traj_dcd_filename, report_interval_dcd))
-simulation.reporters.append(StateDataReporter(stdout, report_interval_stdout, step=True,
-                                              temperature=True, elapsedTime=True))
-simulation.reporters.append(StateDataReporter(csv_filename, report_interval_csv, time=True,
-                                              potentialEnergy=True,
-                                              totalEnergy=True,
-                                              temperature=True))
+    platform = simulation.context.getPlatform()
+    print ("\nUsing OpenMM platform: %s\n" % platform.getName())
 
-# run the simulation
-print ('Step 3: Simulation starts.', flush=True)
-start = time.time()
-simulation.step(n_steps)
-end = time.time()
-print ( 'Simulation ends, %d sec. elapsed.' % (end - start) )
+    print ('\nStep 1: Energy minimization...', end='')
+    simulation.minimizeEnergy()
+    print ('done.\n')
+    print ('Step 2: Run {} steps before recording statistics...'.format(pre_steps), end='', flush=True)
+    simulation.step(pre_steps)
+    print ('done.\n')
+    # registrate reporter for output
+    simulation.reporters = []
 
-del simulation
+    simulation.reporters.append(DCDReporter(traj_dcd_filename, report_interval_dcd))
+    simulation.reporters.append(StateDataReporter(stdout, report_interval_stdout, step=True,
+                                                  temperature=True, elapsedTime=True))
+    simulation.reporters.append(StateDataReporter(csv_filename, report_interval_csv, time=True,
+                                                  potentialEnergy=True,
+                                                  totalEnergy=True,
+                                                  temperature=True))
 
-# -
+    # run the simulation
+    print ('Step 3: Simulation starts.', flush=True)
+    start = time.time()
+    simulation.step(n_steps)
+    end = time.time()
+    print ( 'Simulation ends, %d sec. elapsed.' % (end - start) )
 
+    del simulation
+
+def calc_weights(sys_temp, sampling_temp, csv_filename, traj_weight_filename, energy_col_idx=1):
+
+    sampling_temp = sampling_temp * unit.kelvin
+    sys_temp = sys_temp * unit.kelvin
+
+    # use potential energy in the csv file generated by OpenMM code
+    print (f'\n=============Calculate Weights============')
+    print (f'\nSampling temperature: {sampling_temp}, system temperature: {sys_temp}')
+    print (f'Reading potential from: {csv_filename}')
+    vec = pd.read_csv(csv_filename)
+    # modify the name of the first column
+    vec.rename(columns={vec.columns[0]: 'Time (ps)'}, inplace=True)
+    # show the data 
+    print ('\nWhole data:\n', vec.head(8))
+
+    # select the column containing energy used to calculate weights
+    energy_col_name=vec.columns[energy_col_idx]
+    print ('\nUse {:d}th column to reweight, name: {}'.format(energy_col_idx, energy_col_name) )
+
+    sampling_beta = 1.0 / (sampling_temp * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA)
+    sys_beta = 1.0 / (sys_temp * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA)
+    energy_list = vec[energy_col_name]
+    mean_energy = energy_list.mean()
+
+    print (f'\nsampling beta={sampling_beta}, system beta={sys_beta}')
+
+    # compute weights from potential energy
+    nonnormalized_weights = [math.exp(-(sys_beta - sampling_beta) * (energy - mean_energy) * unit.kilojoule_per_mole) for energy in energy_list] 
+    weights = pd.DataFrame(nonnormalized_weights / np.mean(nonnormalized_weights), columns=['weight'] )
+
+    # insert time info
+    time_col_idx = 0
+    time_col_name=vec.columns[time_col_idx]
+    weights.insert(0, time_col_name, vec[time_col_name])
+    print ('\nWeight:\n', weights.head(8), '\n\nSummary of weights:\n', weights.describe())
+
+    weights.to_csv(traj_weight_filename, index=False)
+    print (f'weights saved to: {traj_weight_filename}')
+
+#/

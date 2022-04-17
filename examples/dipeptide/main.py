@@ -11,6 +11,9 @@ import sys
 import time
 import MDAnalysis as mda
 import pandas as pd
+import configparser
+from openmm import unit
+import argparse
 
 #sys.path.append('../colvarsfinder/core/')
 sys.path.append('../')
@@ -18,6 +21,7 @@ sys.path.append('../')
 from colvarsfinder.core.autoencoder import AutoEncoderTask
 from colvarsfinder.core.eigenfunction import EigenFunctionTask 
 from colvarsfinder.core.trajectory import WeightedTrajectory
+from colvarsfinder.sampler.LangevinIntegrator import LangevinSampler, calc_weights
 
 # +
 def set_all_seeds(seed):
@@ -26,6 +30,43 @@ def set_all_seeds(seed):
         torch.cuda.manual_seed_all(seed)
         np.random.seed(seed)
     random.seed(seed)
+
+class Params(object):
+    def __init__(self, task, config_filename='params.cfg'):
+
+        config = configparser.ConfigParser()
+        config.read(config_filename)
+
+        if task == 'sampling':
+            self.pdb_filename = config['System']['pdb_filename']
+            self.n_steps = config['Sampling'].getint('n_steps')
+            self.pre_steps = config['Sampling'].getint('pre_steps')
+            self.step_size = config['Sampling'].getfloat('step_size') 
+            self.frictionCoeff = config['Sampling'].getfloat('friction') 
+            self.sampling_temp = config['Sampling'].getfloat('sampling_temperature') 
+            self.sampling_path = config['Sampling'].get('sampling_path')
+
+            self.traj_dcd_filename = config['Sampling']['traj_dcd_filename']
+            self.csv_filename = config['Sampling']['csv_filename']
+
+            self.report_interval_dcd = config['Sampling'].getint('report_interval_dcd')
+            self.report_interval_stdout = config['Sampling'].getint('report_interval_stdout')
+            self.report_interval_csv = config['Sampling'].getint('report_interval_csv')
+            self.plumed_script = config['Sampling'].get('plumed_script')
+
+        if task == 'calc_weights':
+            self.sys_temp = config['System'].getfloat('sys_temperature') 
+            self.sampling_temp = config['Sampling'].getfloat('sampling_temperature') 
+
+            sampling_path = config['Sampling'].get('sampling_path')
+            csv_filename = config['Sampling']['csv_filename']
+            traj_weight_filename = config['Sampling']['traj_weight_filename']
+
+            self.energy_col_idx_in_csv = config['Sampling'].getint('energy_col_idx_in_csv')
+            assert self.energy_col_idx_in_csv , "Column idx in csv file not specified for calculating weights!"
+
+            self.csv_filename=os.path.join(sampling_path, csv_filename)
+            self.traj_weight_filename = os.path.join(sampling_path, traj_weight_filename)
 
 class TrainingArgs(object):
     r"""TBA
@@ -44,6 +85,10 @@ class TrainingArgs(object):
 
         config = configparser.ConfigParser()
         config.read(config_filename)
+
+        dd = dict(config['System'])
+        print (dd['sys_name'])
+        exit(0)
 
         self.sys_name = config['System'].get('sys_name')
         self.pdb_filename = config['System'].get('pdb_filename')
@@ -110,7 +155,7 @@ class TrainingArgs(object):
 
         print (f'\n[Info] Parameters loaded from: {config_filename}\n', flush=True)
 
-def main():
+def train(args):
 
     # read configuration parameters
     args = TrainingArgs()
@@ -232,5 +277,27 @@ def main():
         print ('Runtime : {:.2f}s\n'.format(timeit.default_timer() - start) )
 
 if __name__ == "__main__":
-    main()
+
+    if len(sys.argv) != 2 or sys.argv[1] not in ['sampling', 'calc_weights', 'training'] :
+        print (f'Usage:\n' \
+                '  1. Generate trajectory data: \n\t./main.py sampling\n' \
+                '  2. Calculate weights of trajectory data: \n\t./main.py calc_weights\n' \
+                '  3. Learn CVs: \n\t./main.py training')
+    else :
+        task = sys.argv[1]
+        args = Params(task)
+        if task == 'sampling' :
+            if not os.path.exists(args.sampling_path):
+                os.makedirs(args.sampling_path)
+            LangevinSampler(args.pdb_filename, args.n_steps,
+                    args.sampling_temp, args.sampling_path, args.pre_steps,
+                    args.step_size, args.frictionCoeff,
+                    args.traj_dcd_filename, args.csv_filename,
+                    args.report_interval_dcd, args.report_interval_stdout, args.report_interval_csv)
+
+        if task == 'calc_weights' :
+            calc_weights(args.sys_temp, args.sampling_temp, args.csv_filename, args.traj_weight_filename, args.energy_col_idx_in_csv)
+
+        if task == 'training' :
+            train(args)
 
