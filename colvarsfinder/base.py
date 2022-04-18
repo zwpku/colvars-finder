@@ -71,7 +71,6 @@ class TrainingTask(object):
                     learning_rate, 
                     model,
                     load_model_filename,
-                    model_save_dir, 
                     save_model_every_step, 
                     model_path, 
                     k,
@@ -91,7 +90,6 @@ class TrainingTask(object):
         self.k = k
         self.model = model
         self.load_model_filename = load_model_filename 
-        self.model_save_dir = model_save_dir
         self.save_model_every_step = save_model_every_step
         self.model_path = model_path
         self.optimizer_name = optimizer_name

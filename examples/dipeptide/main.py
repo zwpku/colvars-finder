@@ -19,7 +19,7 @@ import argparse
 sys.path.append('../')
 
 from colvarsfinder.autoencoder import AutoEncoder, AutoEncoderTask
-from colvarsfinder.eigenfunction import EigenFunction, EigenFunctionTask 
+from colvarsfinder.eigenfunction import EigenFunctions, EigenFunctionTask 
 from colvarsfinder.trajectory import WeightedTrajectory
 from colvarsfinder.utils import integrate_langevin, calc_weights
 
@@ -110,7 +110,7 @@ class Params(object):
                     self.k = config['EigenFunction'].getint('num_eigenfunction')
                     self.layer_dims = [int(x) for x in config['EigenFunction'].get('hidden_layer_dims').split(',')]
                     self.activation_name = config['EigenFunction'].get('activation') 
-                    self.alpha_vec = config['EigenFunction'].getfloat('penalty_alpha')
+                    self.alpha = config['EigenFunction'].getfloat('penalty_alpha')
                     self.eig_w = [float(x) for x in config['EigenFunction'].get('eig_w').split(',')]
                     self.diffusion_coeff = config['EigenFunction'].getfloat('diffusion_coeff')
                     self.sort_eigvals_in_training = config['EigenFunction'].getboolean('sort_eigvals_in_training')
@@ -229,14 +229,14 @@ def train(args):
         if args.verbose: print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(feature_dim, args.k), model)
 
         # define training task
-        train_obj = AutoEncoderTask(traj_obj, pp_layer, args.learning_rate, model, args.load_model_filename, args.model_save_dir,
+        train_obj = AutoEncoderTask(traj_obj, pp_layer, args.learning_rate, model, args.load_model_filename, 
                 args.save_model_every_step, model_path, args.k, args.batch_size, args.num_epochs, args.test_ratio,
                 args.optimizer_name, args.device, args.verbose)
 
     else : # task_type: Eigenfunction
 
         layer_dims = [feature_dim] + args.layer_dims + [1]
-        model = EigenFunction(layer_dims, args.k, args.activation()).to(args.device)
+        model = EigenFunctions(layer_dims, args.k, args.activation()).to(args.device)
 
         if args.verbose: print ('\nEigenfunctions:\n', model, flush=True)
 
@@ -246,9 +246,9 @@ def train(args):
         diag_coeff = torch.ones(tot_dim).to(args.device) * args.diffusion_coeff * 1e7 * args.beta
 
         train_obj = EigenFunctionTask(traj_obj, pp_layer, args.learning_rate,
-                model, args.load_model_filename, args.model_save_dir,
-                args.save_model_every_step, model_path, args.beta, diag_coeff,
-                args.alpha_vec, args.eig_w, args.sort_eigvals_in_training,
+                model, args.load_model_filename, args.save_model_every_step, 
+                model_path, args.beta, diag_coeff, args.alpha, args.eig_w, 
+                args.sort_eigvals_in_training,
                 args.k, args.batch_size, args.num_epochs, args.test_ratio,
                 args.optimizer_name, args.device, args.verbose)
 

@@ -5,13 +5,11 @@
 :Year: 2022
 :Copyright: GNU Public License v3
 
-This module implements a class that defines a feature of molecular system
-(:class:`molann.feature.Feature`), and a class that constructs a list of
-features from a feature file (:class:`molann.feature.FeatureFileReader`).
+This module implements classes for learning eigenfunctions. 
 
 Classes
 -------
-.. autoclass:: EigenFunction
+.. autoclass:: EigenFunctions
     :members:
 
 .. autoclass:: EigenFunctionTask
@@ -36,31 +34,42 @@ import copy
 from colvarsfinder.base import TrainingTask
 
 # eigenfunction class
-class EigenFunction(torch.nn.Module):
-    r"""TBA
+class EigenFunctions(torch.nn.Module):
+    r"""Feedforward neural network that will be concatenated to the preprocessing layer to represent eigenfunctions.
 
-    Parameters
-    ----------
+    Args:
+        layer_dims (list of ints): dimensions of layers, shared by each
+            eigenfunction. 
+        k (int): number of eigenfunctions.
+        activation: PyTorch non-linear activation function.
 
-    Attributes
-    ----------
+    Raises:
+        AssertionError: if layer_dims[-1] != 1.
+
+    Note: 
+        The first item of *layer_dims* should equal the output dimension of the preprocessing layer, while the last item of *layer_dims* needs to be one.
 
     Example
     -------
     """
 
     def __init__(self, layer_dims, k, activation=torch.nn.Tanh()):
-        super(EigenFunction, self).__init__()
+        super(EigenFunctions, self).__init__()
         assert layer_dims[-1] == 1, "each eigenfunction must be one-dimensional"
 
         self.eigen_funcs = torch.nn.ModuleList([ann.create_sequential_nn(layer_dims, activation) for idx in range(k)])
 
     def forward(self, inp):
-        """TBA"""
+        r"""
+        Args:
+            inp: PyTorch tensor, possibly the output of preprocessing layer.
+        Return: 
+            values of eigenfunctions given the input tensor.
+        """
         return torch.cat([nn(inp) for nn in self.eigen_funcs], dim=1)
 
 # eigenfunction class
-class _ReorderedEigenFunction(torch.nn.Module):
+class _ReorderedEigenFunctions(torch.nn.Module):
     r"""TBA
 
     Parameters
@@ -73,15 +82,36 @@ class _ReorderedEigenFunction(torch.nn.Module):
     -------
     """
     def __init__(self, eigenfunction_model, cvec):
-        super(_ReorderedEigenFunction, self).__init__()
+        super(_ReorderedEigenFunctions, self).__init__()
         self.eigen_funcs = torch.nn.ModuleList([copy.deepcopy(eigenfunction_model.eigen_funcs[idx]) for idx in cvec])
 
     def forward(self, inp):
-        """TBA"""
+        r""" 
+        """
         return torch.cat([nn(inp) for nn in self.eigen_funcs], dim=1)
 
 class EigenFunctionTask(TrainingTask):
-    """Training task for eigenfunctions 
+    r"""The class for training eigenfunctions.
+
+    Args:
+        traj_obj (:class:`colvarsfinder.trajectory.WeightedTrajectory`): trajectory data with weights.
+        pp_layer (:external+molann:class:`molann.ann.PreprocessingANN`): preprocessing layer.
+        learning_rate (float): learning rate. 
+        model (:class:`EigenFunctions`): feedforward neural network to be trained.
+        load_model_filename (str): filename of a trained neural network, used to restart from a previous training.
+        save_model_every_step (int): how often to save model.
+        model_path (str): the directory to save training results.
+        beta (float): the value of :math:`(k_BT)^{-1}`.
+        diag_coeff (:external+pytorch:class:`torch.Tensor`): one dimensional
+        alpha (float): penalty constant.
+        eig_weights (list of floats): :math:`k` weights in the loss functions.
+        k (int): number of eigenfunctions to be learned.
+        batch_size (int): batch-size.
+        num_epochs (int): number of training epochs.
+        test_ratio: float in :math:`(0,1)`, the ratio of the amount of states used as test data. 
+        optimizer_name (str): name of optimizer used for training. either 'Adam' or 'SGD'.
+        device (:external+pytorch:class:`torch.device`): computing device.
+        verbose (bool): print more information if true.
     """
 
     def __init__(self, traj_obj, 
@@ -89,12 +119,11 @@ class EigenFunctionTask(TrainingTask):
                         learning_rate, 
                         model,
                         load_model_filename,
-                        model_save_dir, 
                         save_model_every_step, 
                         model_path, 
                         beta, 
                         diag_coeff,
-                        alpha_vec,
+                        alpha,
                         eig_weights, 
                         sort_eigvals_in_training=True, 
                         k=1,
@@ -105,11 +134,11 @@ class EigenFunctionTask(TrainingTask):
                         device= torch.device('cpu'),
                         verbose=True):
 
-        super(EigenFunctionTask, self).__init__( traj_obj, pp_layer, learning_rate, model, load_model_filename, model_save_dir, 
+        super(EigenFunctionTask, self).__init__( traj_obj, pp_layer, learning_rate, model, load_model_filename, 
                                 save_model_every_step, model_path, k, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
 
         self.beta = beta
-        self.alpha = alpha_vec
+        self.alpha = alpha
         self.sort_eigvals_in_training = sort_eigvals_in_training
         self.eig_w = eig_weights
         self.model = model
@@ -144,7 +173,7 @@ class EigenFunctionTask(TrainingTask):
             print ('Done\n', flush=True)
 
     def colvar_model(self):
-        reordered_model = _ReorderedEigenFunction(self.model, self.cvec)
+        reordered_model = _ReorderedEigenFunctions(self.model, self.cvec)
         return ann.MolANN(self.preprocessing_layer, reordered_model)
 
     def cv_on_feature_data(self, X):
