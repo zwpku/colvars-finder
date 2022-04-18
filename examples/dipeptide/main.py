@@ -18,10 +18,10 @@ import argparse
 #sys.path.append('../colvarsfinder/core/')
 sys.path.append('../')
 
-from colvarsfinder.core.autoencoder import AutoEncoder, AutoEncoderTask
-from colvarsfinder.core.eigenfunction import EigenFunction, EigenFunctionTask 
-from colvarsfinder.core.trajectory import WeightedTrajectory
-from colvarsfinder.sampler.LangevinIntegrator import LangevinSampler, calc_weights
+from colvarsfinder.autoencoder import AutoEncoder, AutoEncoderTask
+from colvarsfinder.eigenfunction import EigenFunction, EigenFunctionTask 
+from colvarsfinder.trajectory import WeightedTrajectory
+from colvarsfinder.utils import integrate_langevin, calc_weights
 
 # +
 def set_all_seeds(seed):
@@ -282,7 +282,7 @@ if __name__ == "__main__":
         if task == 'sampling' :
             if not os.path.exists(args.sampling_path):
                 os.makedirs(args.sampling_path)
-            LangevinSampler(args.pdb_filename, args.n_steps,
+            integrate_langevin(args.pdb_filename, args.n_steps,
                     args.sampling_temp, args.sampling_path, args.pre_steps,
                     args.step_size, args.frictionCoeff,
                     args.traj_dcd_filename, args.csv_filename,
