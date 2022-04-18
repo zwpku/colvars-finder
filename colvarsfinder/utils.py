@@ -1,4 +1,24 @@
-# Generate MD trajectory data using OpenMM 
+"""Data Preparation --- :mod:`colvarsfinder.utils`
+=================================================================
+
+:Author: Wei Zhang
+:Year: 2022
+:Copyright: GNU Public License v3
+
+This module implements a class that defines a feature of molecular system
+(:class:`molann.feature.Feature`), and a class that constructs a list of
+features from a feature file (:class:`molann.feature.FeatureFileReader`).
+
+Functions
+---------
+
+.. autofunction:: integrate_langevin
+
+.. autofunction:: calc_weights
+
+"""
+
+
 import math
 from random import random, randint
 import numpy as np
@@ -15,7 +35,8 @@ from openmm.app import *
 
 # ### MD simulation
 
-def LangevinSampler(pdb_filename, n_steps, sampling_temp, sampling_path, pre_steps=0, step_size=1.0 * unit.femtoseconds,
+# Generate MD trajectory data using OpenMM 
+def integrate_langevin(pdb_filename, n_steps, sampling_temp, sampling_path, pre_steps=0, step_size=1.0 * unit.femtoseconds,
         frictionCoeff=1.0 / unit.picosecond,  traj_dcd_filename='traj.dcd', csv_filename='output.csv', report_interval_dcd=100,
         report_interval_stdout=100, report_interval_csv=100, forcefield=None, plumed_script=None):
 
@@ -109,4 +130,3 @@ def calc_weights(sys_temp, sampling_temp, csv_filename, traj_weight_filename, en
     weights.to_csv(traj_weight_filename, index=False)
     print (f'weights saved to: {traj_weight_filename}')
 
-#/

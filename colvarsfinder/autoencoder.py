@@ -1,4 +1,4 @@
-"""Autoencoder Task --- :mod:`colvarsfinder.core.autoencoder`
+"""Autoencoder Task --- :mod:`colvarsfinder.autoencoder`
 =================================================================
 
 :Author: Wei Zhang
@@ -33,7 +33,7 @@ import pandas as pd
 from tqdm import tqdm
 import os
 
-from colvarsfinder.core.base import TrainingTask
+from colvarsfinder.base import TrainingTask
 
 # autoencoder class 
 class AutoEncoder(torch.nn.Module):

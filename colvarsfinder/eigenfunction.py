@@ -1,4 +1,4 @@
-"""Eigenfunction Task --- :mod:`colvarsfinder.core.eigenfunction`
+"""Eigenfunction Task --- :mod:`colvarsfinder.eigenfunction`
 =================================================================
 
 :Author: Wei Zhang
@@ -33,7 +33,7 @@ from tqdm import tqdm
 import os
 import copy
 
-from colvarsfinder.core.base import TrainingTask
+from colvarsfinder.base import TrainingTask
 
 # eigenfunction class
 class EigenFunction(torch.nn.Module):

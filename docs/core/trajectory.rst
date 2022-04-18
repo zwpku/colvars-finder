@@ -1,5 +1,0 @@
-
-.. automodule:: colvarsfinder.core.trajectory
-
-
-

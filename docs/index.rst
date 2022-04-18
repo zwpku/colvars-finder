@@ -4,19 +4,28 @@
    contain the root `toctree` directive.
 
 Documentation of ColVars Finder
-==========================================
+===============================
+
+This package implements TBA. 
+
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
+   installation
+   quickstart
+
 Modules
 -------
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
-   core
-   sampler
+   trajectory
+   base
+   autoencoder
+   eigenfunction
+   utils
 
 
 

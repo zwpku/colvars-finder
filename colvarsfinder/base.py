@@ -1,4 +1,4 @@
-"""Training Task --- :mod:`colvarsfinder.core.base_task`
+"""Base class of training task --- :mod:`colvarsfinder.base`
 =================================================================
 
 :Author: Wei Zhang
@@ -30,7 +30,40 @@ import configparser
 from openmm import unit
 
 class TrainingTask(object):
-    """class for a training task
+    r"""ANN layer that performs alignment based on `Kabsch algorithm <http://en.wikipedia.org/wiki/kabsch_algorithm>`__
+
+    Args:
+        align_atom_group (:external+mdanalysis:class:`MDAnalysis.core.groups.AtomGroup`): atom
+                    group. Specifies coordinates of reference atoms that are used to perform alignment. 
+
+
+    Let :math:`x_{ref}\in \mathbb{R}^{n_r\times 3}` be the coordinates of the
+    reference atoms, where :math:`n_r` is the number of atoms in the atom group. Then, this class defines the map
+
+
+    .. math::
+
+        x \in \mathbb{R}^{n \times 3} \longrightarrow (x-c(x))A(x) \in \mathbb{R}^{n \times 3}\,,
+
+    where, given a state :math:`x`, :math:`A(x)\in \mathbb{R}^{3\times 3}` and
+    :math:`c(x)\in \mathbb{R}^{n\times 3}` are respectively the optimal
+
+    Note that :math:`x_{ref}` will be shifted to have zero mean before it is used to align states.
+
+    Example:
+
+    .. code-block:: python
+
+        import torch
+        import MDAnalysis as mda
+        from molann.ann import AlignmentLayer
+
+    Raises:
+        AssertionError: if feature_list is empty.
+
+    Returns:
+        :external+pytorch:class:`torch.Tensor` that stores the aligned states
+
     """
     def __init__(self, 
                     traj_obj, 
