@@ -40,7 +40,8 @@ extensions = [
 intersphinx_mapping = {'mdanalysis': ('https://docs.mdanalysis.org/stable', None), \
                        'pytorch': ('https://pytorch.org/docs/stable/', None) , \
                        'pandas': ('https://pandas.pydata.org/docs/', None), \
-                       'molann': ('https://molann.readthedocs.io/en/latest/', None),
+                       'molann': ('https://molann.readthedocs.io/en/latest/', None), \
+                       'openmm': ('http://docs.openmm.org/latest/api-python/', None),
                       }
 
 #mathjax_path = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML'
