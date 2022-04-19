@@ -21,10 +21,7 @@ Modules
 .. toctree::
    :maxdepth: 1
 
-   trajectory
-   base
-   autoencoder
-   eigenfunction
+   core
    utils
 
 

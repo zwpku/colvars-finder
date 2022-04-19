@@ -18,10 +18,9 @@ import argparse
 #sys.path.append('../colvarsfinder/core/')
 sys.path.append('../')
 
-from colvarsfinder.autoencoder import AutoEncoder, AutoEncoderTask
-from colvarsfinder.eigenfunction import EigenFunctions, EigenFunctionTask 
-from colvarsfinder.trajectory import WeightedTrajectory
-from colvarsfinder.utils import integrate_langevin, calc_weights
+from colvarsfinder.core import AutoEncoder, AutoEncoderTask
+from colvarsfinder.core import EigenFunctions, EigenFunctionTask 
+from colvarsfinder.utils import WeightedTrajectory, integrate_langevin, calc_weights
 
 # +
 def set_all_seeds(seed):
