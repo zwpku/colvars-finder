@@ -50,11 +50,13 @@ import pandas as pd
 from tensorboardX import SummaryWriter
 import os
 import copy
+from abc import ABC, abstractmethod
+from tqdm import tqdm
 
 from openmm import unit
 
-class TrainingTask(object):
-    r"""Base class of train tasks. A train task should be derived from this class.
+class TrainingTask(ABC):
+    r"""Abstract base class of train tasks. A train task should be derived from this class.
 
     Args:
         traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): An object that holds trajectory data and weights
@@ -172,6 +174,23 @@ class TrainingTask(object):
 
         if self.verbose: print (f'  script model for CVs saved at:\n\t{trained_cv_script_filename}\n', flush=True)
 
+    @abstractmethod
+    def train(self):
+        r"""Function to train the model.
+
+        This function has to be implemented in derived class.
+        """
+
+        pass
+
+    @abstractmethod
+    def colvar_model(self):
+        r"""
+        Return:
+            :external+pytorch:class:`torch.nn.Module` that represents collective variables given :attr:`model`.
+        """
+        pass
+
 
 # eigenfunction class
 class EigenFunctions(torch.nn.Module):
@@ -194,7 +213,7 @@ class EigenFunctions(torch.nn.Module):
     """
 
     def __init__(self, layer_dims, k, activation=torch.nn.Tanh()):
-        super(EigenFunctions, self).__init__()
+        super().__init__()
         assert layer_dims[-1] == 1, "each eigenfunction must be one-dimensional"
 
         self.eigen_funcs = torch.nn.ModuleList([ann.create_sequential_nn(layer_dims, activation) for idx in range(k)])
@@ -222,7 +241,7 @@ class _ReorderedEigenFunctions(torch.nn.Module):
     -------
     """
     def __init__(self, eigenfunction_model, cvec):
-        super(_ReorderedEigenFunctions, self).__init__()
+        super().__init__()
         self.eigen_funcs = torch.nn.ModuleList([copy.deepcopy(eigenfunction_model.eigen_funcs[idx]) for idx in cvec])
 
     def forward(self, inp):
@@ -274,7 +293,7 @@ class EigenFunctionTask(TrainingTask):
                         device= torch.device('cpu'),
                         verbose=True):
 
-        super(EigenFunctionTask, self).__init__( traj_obj, pp_layer, learning_rate, model, load_model_filename, 
+        super().__init__( traj_obj, pp_layer, learning_rate, model, load_model_filename, 
                                 save_model_every_step, model_path, k, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
 
         self.beta = beta
@@ -315,9 +334,6 @@ class EigenFunctionTask(TrainingTask):
     def colvar_model(self):
         reordered_model = _ReorderedEigenFunctions(self.model, self.cvec)
         return ann.MolANN(self.preprocessing_layer, reordered_model)
-
-    def cv_on_feature_data(self, X):
-        return self.model(X)[:,self.cvec]
 
     def loss_func(self, X, weight, f_grad):
         # Evaluate function value on data
@@ -457,7 +473,7 @@ class AutoEncoder(torch.nn.Module):
     """
 
     def __init__(self, e_layer_dims, d_layer_dims, activation=torch.nn.Tanh()):
-        super(AutoEncoder, self).__init__()
+        super().__init__()
         self.encoder = ann.create_sequential_nn(e_layer_dims, activation)
         self.decoder = ann.create_sequential_nn(d_layer_dims, activation)
 
@@ -503,7 +519,7 @@ class AutoEncoderTask(TrainingTask):
                         device= torch.device('cpu'),
                         verbose=True):
 
-        super(AutoEncoderTask, self).__init__( traj_obj, pp_layer, learning_rate, model, load_model_filename, model_save_dir, 
+        super().__init__( traj_obj, pp_layer, learning_rate, model, load_model_filename, model_save_dir, 
                                 save_model_every_step, model_path, k, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
 
         self.init_model_and_optimizer()
@@ -523,9 +539,6 @@ class AutoEncoderTask(TrainingTask):
         out = self.model(X)
         # Evaluate loss
         return (weight * torch.sum((out-X)**2, dim=1)).sum() / weight.sum()
-
-    def cv_on_feature_data(self, X):
-        return self.model.encoder(X)
 
     def train(self):
         """Function to train the model

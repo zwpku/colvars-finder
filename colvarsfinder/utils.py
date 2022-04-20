@@ -60,7 +60,7 @@ from openmm.app import *
 
 # ### MD simulation
 
-class WeightedTrajectory(object):
+class WeightedTrajectory:
     r"""Class that stores trajectory data assoicated to an MDAnalysis Universe.
 
     Args:
@@ -203,11 +203,11 @@ def integrate_langevin(pdb_filename, n_steps, sampling_temp, sampling_output_pat
     """
 
     print (f'\nSampling temperature: {sampling_temp}')
-    print ( 'Directory to save trajectory ouptuts: %s' % sampling_path)
+    print ( 'Directory to save trajectory ouptuts: %s' % sampling_output_path)
 
     # add path to filenames
-    traj_dcd_filename = os.path.join(sampling_path, traj_dcd_filename)
-    csv_filename=os.path.join(sampling_path, csv_filename)
+    traj_dcd_filename = os.path.join(sampling_output_path, traj_dcd_filename)
+    csv_filename=os.path.join(sampling_output_path, csv_filename)
 
     # prepare before simulation
     pdb = PDBFile(pdb_filename)

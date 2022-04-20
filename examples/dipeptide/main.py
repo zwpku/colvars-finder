@@ -43,41 +43,40 @@ class Params(object):
             self.step_size = config['Sampling'].getfloat('step_size') * unit.femtoseconds
             self.frictionCoeff = config['Sampling'].getfloat('friction') / unit.picosecond
             self.sampling_temp = config['Sampling'].getfloat('sampling_temperature') * unit.kelvin
-            self.sampling_path = config['Sampling'].get('sampling_path')
+            self.sampling_output_path = config['Sampling'].get('sampling_output_path')
 
             self.traj_dcd_filename = config['Sampling']['traj_dcd_filename']
             self.csv_filename = config['Sampling']['csv_filename']
 
-            self.report_interval_dcd = config['Sampling'].getint('report_interval_dcd')
+            self.report_interval = config['Sampling'].getint('report_interval')
             self.report_interval_stdout = config['Sampling'].getint('report_interval_stdout')
-            self.report_interval_csv = config['Sampling'].getint('report_interval_csv')
             self.plumed_script = config['Sampling'].get('plumed_script')
 
         if task == 'calc_weights':
             self.sys_temp = config['System'].getfloat('sys_temperature') * unit.kelvin
             self.sampling_temp = config['Sampling'].getfloat('sampling_temperature') * unit.kelvin
 
-            sampling_path = config['Sampling'].get('sampling_path')
+            sampling_output_path = config['Sampling'].get('sampling_output_path')
             csv_filename = config['Sampling']['csv_filename']
             traj_weight_filename = config['Sampling']['traj_weight_filename']
 
             self.energy_col_idx_in_csv = config['Sampling'].getint('energy_col_idx_in_csv')
             assert self.energy_col_idx_in_csv , "Column idx in csv file not specified for calculating weights!"
 
-            self.csv_filename=os.path.join(sampling_path, csv_filename)
-            self.traj_weight_filename = os.path.join(sampling_path, traj_weight_filename)
+            self.csv_filename=os.path.join(sampling_output_path, csv_filename)
+            self.traj_weight_filename = os.path.join(sampling_output_path, traj_weight_filename)
 
         if task == 'training':
             self.sys_name = config['System'].get('sys_name')
             self.pdb_filename = config['System'].get('pdb_filename')
             self.temp = config['System'].getfloat('sys_temperature') * unit.kelvin
-            sampling_path = config['Sampling'].get('sampling_path')
+            sampling_output_path = config['Sampling'].get('sampling_output_path')
             self.traj_dcd_filename = config['Sampling'].get('traj_dcd_filename')
             self.traj_weight_filename = config['Sampling'].get('traj_weight_filename')
 
             # add path to filenames
-            self.traj_dcd_filename = os.path.join(sampling_path, self.traj_dcd_filename)
-            self.traj_weight_filename = os.path.join(sampling_path, self.traj_weight_filename)
+            self.traj_dcd_filename = os.path.join(sampling_output_path, self.traj_dcd_filename)
+            self.traj_weight_filename = os.path.join(sampling_output_path, self.traj_weight_filename)
 
              # unit: kJ/mol
             kT = self.temp * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA / unit.kilojoule_per_mole
@@ -247,8 +246,7 @@ def train(args):
         train_obj = EigenFunctionTask(traj_obj, pp_layer, args.learning_rate,
                 model, args.load_model_filename, args.save_model_every_step, 
                 model_path, args.beta, diag_coeff, args.alpha, args.eig_w, 
-                args.sort_eigvals_in_training,
-                args.k, args.batch_size, args.num_epochs, args.test_ratio,
+                args.sort_eigvals_in_training, args.k, args.batch_size, args.num_epochs, args.test_ratio,
                 args.optimizer_name, args.device, args.verbose)
 
     if args.use_gpu :
@@ -279,13 +277,13 @@ if __name__ == "__main__":
         task = sys.argv[1]
         args = Params(task)
         if task == 'sampling' :
-            if not os.path.exists(args.sampling_path):
-                os.makedirs(args.sampling_path)
+            if not os.path.exists(args.sampling_output_path):
+                os.makedirs(args.sampling_output_path)
             integrate_langevin(args.pdb_filename, args.n_steps,
-                    args.sampling_temp, args.sampling_path, args.pre_steps,
+                    args.sampling_temp, args.sampling_output_path, args.pre_steps,
                     args.step_size, args.frictionCoeff,
                     args.traj_dcd_filename, args.csv_filename,
-                    args.report_interval_dcd, args.report_interval_stdout, args.report_interval_csv)
+                    args.report_interval, args.report_interval_stdout)
 
         if task == 'calc_weights' :
             calc_weights(args.sys_temp, args.sampling_temp, args.csv_filename, args.traj_weight_filename, args.energy_col_idx_in_csv)
