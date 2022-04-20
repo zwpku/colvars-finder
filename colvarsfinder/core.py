@@ -5,19 +5,31 @@
 :Year: 2022
 :Copyright: GNU Public License v3
 
-This module implements classes for learning collective variables.  
+This module implements classes for learning collective variables (ColVars).  
+Two training tasks, both of which are derived from the base class :class:`TrainingTask`, 
+are implemented:
 
-Classes
--------
+    #. :class:`AutoEncoderTask`, which finds collective variables by training autoencoder.
+    #. :class:`EigenFunctionTask`, which finds collective variables by computing eigenfunctions.
+
+
+Base Class
+----------
 
 .. autoclass:: TrainingTask
     :members:
+
+Learning ColVars by training autoencoder
+-----------------------------------------
 
 .. autoclass:: AutoEncoder
     :members:
 
 .. autoclass:: AutoEncoderTask
     :members:
+
+Learning ColVars by computing eigenfunctions
+--------------------------------------------
 
 .. autoclass:: EigenFunctions
     :members:
@@ -45,33 +57,38 @@ class TrainingTask(object):
     r"""Base class of train tasks. A train task should be derived from this class.
 
     Args:
-        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): trajectory data with weights
+        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): An object that holds trajectory data and weights
         pp_layer (:external+molann:class:`molann.ann.PreprocessingANN`): preprocessing layer
         learning_rate (float): learning rate
         model : neural network to be trained
-        load_model_filename (str): filename of a trained neural network, used to restart from a previous training
+        load_model_filename (str): filename of a trained model, used to restart from a previous training
         save_model_every_step (int): how often to save model
         model_path (str): the directory to save training results
-        k (int): number of collective variables
-        batch_size (int): batch-size
+        k (int): number of collective variables to be learned
+        batch_size (int): size of mini-batch 
         num_epochs (int): number of training epochs
         test_ratio: float in :math:`(0,1)`, ratio of the amount of states used as test data
-        optimizer_name (str): name of optimizer used for training. either 'Adam' or 'SGD'
+        optimizer_name (str): name of optimizer used to train neural networks. either 'Adam' or 'SGD'
         device (:external+pytorch:class:`torch.device`): computing device, either CPU or GPU
         verbose (bool): print more information if true
 
-    Example:
+    Attributes:
+        traj_obj: the same as the input parameter
+        preprocessing_layer: the same as the input parameter pp_layer
+        learning_rate: the same as the input parameter
+        model: the same as the input parameter
+        load_model_filename: the same as the input parameter
+        save_model_every_step : the same as the input parameter
+        model_path : the same as the input parameter
+        k: the same as the input parameter
+        batch_size: the same as the input parameter
+        num_epochs: the same as the input parameter
+        test_ratio: the same as the input parameter
+        optimizer_name: the same as the input parameter
+        device: the same as the input parameter
+        verbose (bool): print more information if true
 
-    .. code-block:: python
-
-        import torch
-
-    Raises:
-        AssertionError: if feature_list is empty.
-
-    Returns:
-        :external+pytorch:class:`torch.Tensor` that stores the aligned states
-
+        writer (`SummaryWriter`): TensorboardX writer
     """
     def __init__(self, 
                     traj_obj, 
@@ -111,6 +128,13 @@ class TrainingTask(object):
         self.writer = SummaryWriter(self.model_path)
 
     def init_model_and_optimizer(self):
+        r"""Initialize model and optimizer
+
+        The previously saved model will be loaded for initialization, if load_model_filename points to an existing file.
+
+        The attribute :attr:`optimizer` is set to
+        :external+pytorch:class:`torch.optim.Adam`, if :attr:`optimizer_name` = 'Adam'; Otherwise, it is set to :external+pytorch:class:`torch.optim.SGD`.
+        """
 
         if self.load_model_filename and os.path.isfile(self.load_model_filename): 
             self.model.load_state_dict(torch.load(self.load_model_filename))
@@ -122,6 +146,16 @@ class TrainingTask(object):
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
     def save_model(self, epoch):
+        r"""Save model to file 
+
+        Args:
+            epoch (int): current epoch
+
+        The (state_dict of the) trained model will be saved at `trained_model.pt` under the output directory. 
+
+        The corresponding neural network for collective variables is first compiled to a :external+pytorch:class:`torch.jit.ScriptModule`, which is then saved at `trained_cv_scripted.pt` under the output directory.
+
+        """
 
         if self.verbose: print (f"\n\nEpoch={epoch}:") 
 

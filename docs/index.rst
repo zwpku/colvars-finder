@@ -6,7 +6,7 @@
 Documentation of ColVars-Finder
 ===============================
 
-This package implements TBA. 
+This package implements methods for finding collective variables of molecular systems by training artificial neural networks.
 
 
 .. toctree::
