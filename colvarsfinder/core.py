@@ -1,4 +1,4 @@
-r"""Training tasks --- :mod:`colvarsfinder.core`
+r"""Training Tasks --- :mod:`colvarsfinder.core`
 =================================================================
 
 :Author: Wei Zhang
@@ -12,101 +12,7 @@ are implemented:
     #. :class:`AutoEncoderTask`, which finds collective variables by training autoencoder.
     #. :class:`EigenFunctionTask`, which finds collective variables by computing eigenfunctions.
 
-
-Mathematical backgrounds
-------------------------
-
-.. rubric:: Molecular system
-
-Assume that the system has :math:`N` atoms and set :math:`d=3N`.
-Let the invariant distribution of the system at temperature :math:`T` be
-:math:`d\mu=\frac{1}{Z} \mathrm{e}^{-\beta V}`, where :math:`\beta=(k_BT)^{-1}`, :math:`V` is the potential of the sytem, and :math:`Z` is the normalizing constant.
-
-.. rubric:: Representation of ColVars
-
-In applications, we often expect that the collective variables,
-denoted by :math:`\xi:\mathbb{R}^{d}\rightarrow \mathbb{R}^k`, are invariant
-under rotations and translations, or that :math:`\xi` is a function of features (bond distances, angles, etc.)
-To achieve this goal, we can write 
-
-.. math::
-
-    \xi(x)=g(r(x)), 
-
-where :math:`r:\mathbb{R}^{d}\rightarrow \mathbb{R}^{d_r}` could be
-the action of certain alignment, a map to certain features, or even the
-identity map, and :math:`g` is the map that we want to learn by training neural networks.
-
-In the following training tasks, :math:`r` is specified in the input parameter
-as the preprocessing layer using the package `MolANN <http:/github.com/zwpku/molann>`__, and :math:`g` corresponds to (part of) the neural network model. 
-
-.. rubric:: Training data
-
-Assume that the trajectory data is :math:`(x_i)_{1\le i \le n}` with weights :math:`(v_i)_{1\le i \le n}`,
-such that one can approximate the distribution :math:`\mu` by
-
-.. math::
-   \int_{\mathbb{R}^{d}} f(x) \mu(dx) \approx \frac{\sum_{l=1}^n v_l f(x_l)}{\sum_{l=1}^n v_l}\,,
-
-for test functions :math:`f`.
-
-Let :math:`(y_l)_{1\le l \le n}` be the data, where :math:`y_l = r(x_l)`.
-
-.. rubric:: Loss function of :class:`AutoEncoderTask`
-
-The class :class:`AutoEncoderTask` trains :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and 
-:math:`f_{dec}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` by the autoencoder
-loss in the transformed space :math:`\mathbb{R}^{d_r}`:
-
-.. math::
-
-        & \int_{\mathbb{R}^{d_r}} |f_{dec}\circ f_{enc}(y)-y|^2  r_{\#}\mu(dy) \\
-       =& \int_{\mathbb{R}^{d}} |f_{dec}\circ f_{enc}(r(y))-r(y)|^2  \mu(dx) \\
-    \approx& \frac{\sum_{l=1}^{n} v_l|f_{dec}\circ f_{enc}(y_l) - y_l|^2}{\sum_{l=1}^n v_l}
-
-where :math:`r_{\#}\mu` denotes the pushforward measure of :math:`\mu` by the map :math:`r`.
-
-After training, the collective variables are constructed by 
-
-.. math::
-    \xi = f_{enc}\circ r.
-
-.. _loss_eigenfunction:
-
-.. rubric:: Loss function of :class:`EigenFunctionTask`
-
-The class :class:`EigenFunctionTask` solves the eigenfunctions :math:`\phi_1, \phi_2, \dots, \phi_k:\mathbb{R}^d\rightarrow \mathbb{R}` of the PDE 
-
-.. math::
-
-    -\mathcal{L}\phi = \lambda \phi,
-
-corresponding to the first :math:`k` eigenvalues :math:`0 < \lambda_1 \le \lambda_2 \le \cdots \le \lambda_k`, where 
-
-.. math::
-    \mathcal{L} = -\nabla V \cdot \nabla f + \frac{1}{\beta} \Delta f\,,
-
-for a test function :math:`f`. This is done by training neural network to
-learn functions :math:`g_1, g_2, \cdots, g_k:\mathbb{R}^{d_r}\rightarrow \mathbb{R}` using the data-version of the loss 
-
-.. _loss_eigen:
-
-.. math::
-    \sum_{i=1}^k \omega_j  \frac{\beta^{-1} \mathbf{E}_{\mu} \big[(a \nabla f)\cdot \nabla f_i\big]}{\mbox{var}_{\mu} f_i} 
-    + \alpha \sum_{1 \le i \le j \le k} \Big(\mathbf{E}_{\mu} (f_if_j) - \delta_{ij}\Big)^2,
-
-where 
-
-    #. :math:`\mathbf{E}_{\mu}` and :math:`\mbox{var}_{\mu}` are the expectation and variance with respect to :math:`\mu`, respectively;
-    #. :math:`\alpha` is the penalty parameter;
-    #. :math:`a\in \mathbb{R}^{d\times d}` is a diagonal matrix;
-    #. :math:`\omega_1 > \omega_2 > \dots > \omega_k > 0` are :math:`k` positive constants;
-    #. :math:`f_i=g_i\circ r, 1\le i \le k`.
-
-After training, the collective variables are constructed by 
-
-.. math::
-    \xi = (g_1\circ r, g_2\circ r, \dots, g_k\circ r)^T.
+See :ref:`math_backgrounds`.
 
 Base class
 ----------
@@ -296,25 +202,33 @@ class TrainingTask(ABC):
 
 # eigenfunction class
 class EigenFunctions(torch.nn.Module):
-    r"""Feedforward neural network that will be concatenated to the preprocessing layer to represent eigenfunctions.
+    r"""Feedforward neural network.
 
     Args:
-        layer_dims (list of ints): dimensions of layers, shared by each
-            eigenfunction. 
-        k (int): number of eigenfunctions.
-        activation: PyTorch non-linear activation function.
+        layer_dims (list of ints): dimensions of layers  
+        k (int): number of eigenfunctions
+        activation: PyTorch non-linear activation function
 
     Raises:
         AssertionError: if layer_dims[-1] != 1.
 
-    Note: 
-        The first item of *layer_dims* should equal the output dimension of the preprocessing layer, while the last item of *layer_dims* needs to be one.
+    The object of this class defines :math:`k` functions :math:`g_1, g_2,
+    \dots, g_k` and corresponds to the :attr:`model` of the class
+    :class:`EigenFunctionTask` that is to be trained. Each
+    :math:`g_i:\mathbb{R}^{d_r}\rightarrow \mathbb{R}` is represented by a
+    feedforward neural network of the same architecture specified by
+    *layer_dims*. After training, it can be concatenated to the preprocessing layer to obtain eigenfunctions, or collective variables.  See :ref:`loss_eigenfunction` for details.
 
-    Example
-    -------
+    Note: 
+        The first item of *layer_dims* should equal to :math:`d_r`, i.e., the output dimension of the preprocessing layer, while the last item of *layer_dims* needs to be one.
+
+    Attributes:
+        eigen_funcs (:external+pytorch:class:`torch.nn.ModuleList`): PyTorch module list that contains :math:`k` PyTorch neural networks of the same architecture.
     """
 
     def __init__(self, layer_dims, k, activation=torch.nn.Tanh()):
+        r"""
+        """
         super().__init__()
         assert layer_dims[-1] == 1, "each eigenfunction must be one-dimensional"
 
@@ -323,9 +237,9 @@ class EigenFunctions(torch.nn.Module):
     def forward(self, inp):
         r"""
         Args:
-            inp: PyTorch tensor, the output of preprocessing layer.
+            inp: PyTorch tensor, the output of preprocessing layer. Its shape is :math:`[l, d_r]`.
         Return: 
-            values of eigenfunctions given the input tensor.
+            PyTorch tensor of shape :math:`[l, k]`, values of the :math:`k` functions :math:`g_1, \cdots, g_k` given the input tensor. 
         """
         return torch.cat([nn(inp) for nn in self.eigen_funcs], dim=1)
 

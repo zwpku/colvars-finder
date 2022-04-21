@@ -15,6 +15,7 @@ This package implements methods for finding collective variables of molecular sy
 
    installation
    quickstart
+   math_backgrounds
 
 Modules
 -------

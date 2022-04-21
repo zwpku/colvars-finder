@@ -1,4 +1,4 @@
-r"""Trajectory data --- :mod:`colvarsfinder.utils`
+r"""Trajectory Data --- :mod:`colvarsfinder.utils`
 =================================================================
 
 :Author: Wei Zhang
