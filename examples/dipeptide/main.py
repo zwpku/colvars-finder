@@ -227,8 +227,8 @@ def train(args):
         if args.verbose: print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(feature_dim, args.k), model)
 
         # define training task
-        train_obj = AutoEncoderTask(traj_obj, pp_layer, args.learning_rate, model, args.load_model_filename, 
-                args.save_model_every_step, model_path, args.k, args.batch_size, args.num_epochs, args.test_ratio,
+        train_obj = AutoEncoderTask(traj_obj, pp_layer,  model, args.load_model_filename, 
+                args.save_model_every_step, model_path, args.learning_rate, args.k, args.batch_size, args.num_epochs, args.test_ratio,
                 args.optimizer_name, args.device, args.verbose)
 
     else : # task_type: Eigenfunction
@@ -243,9 +243,9 @@ def train(args):
         # the unit of eigenvalues given by Rayleigh quotients is ns^{-1}.
         diag_coeff = torch.ones(tot_dim).to(args.device) * args.diffusion_coeff * 1e7 * args.beta
 
-        train_obj = EigenFunctionTask(traj_obj, pp_layer, args.learning_rate,
+        train_obj = EigenFunctionTask(traj_obj, pp_layer, 
                 model, args.load_model_filename, args.save_model_every_step, 
-                model_path, args.beta, diag_coeff, args.alpha, args.eig_w, 
+                model_path, args.beta, diag_coeff, args.alpha, args.eig_w, args.learning_rate,
                 args.sort_eigvals_in_training, args.k, args.batch_size, args.num_epochs, args.test_ratio,
                 args.optimizer_name, args.device, args.verbose)
 

@@ -1,4 +1,4 @@
-"""Training tasks --- :mod:`colvarsfinder.core`
+r"""Training tasks --- :mod:`colvarsfinder.core`
 =================================================================
 
 :Author: Wei Zhang
@@ -13,7 +13,102 @@ are implemented:
     #. :class:`EigenFunctionTask`, which finds collective variables by computing eigenfunctions.
 
 
-Base Class
+Mathematical backgrounds
+------------------------
+
+.. rubric:: Molecular system
+
+Assume that the system has :math:`N` atoms and set :math:`d=3N`.
+Let the invariant distribution of the system at temperature :math:`T` be
+:math:`d\mu=\frac{1}{Z} \mathrm{e}^{-\beta V}`, where :math:`\beta=(k_BT)^{-1}`, :math:`V` is the potential of the sytem, and :math:`Z` is the normalizing constant.
+
+.. rubric:: Representation of ColVars
+
+In applications, we often expect that the collective variables,
+denoted by :math:`\xi:\mathbb{R}^{d}\rightarrow \mathbb{R}^k`, are invariant
+under rotations and translations, or that :math:`\xi` is a function of features (bond distances, angles, etc.)
+To achieve this goal, we can write 
+
+.. math::
+
+    \xi(x)=g(r(x)), 
+
+where :math:`r:\mathbb{R}^{d}\rightarrow \mathbb{R}^{d_r}` could be
+the action of certain alignment, a map to certain features, or even the
+identity map, and :math:`g` is the map that we want to learn by training neural networks.
+
+In the following training tasks, :math:`r` is specified in the input parameter
+as the preprocessing layer using the package `MolANN <http:/github.com/zwpku/molann>`__, and :math:`g` corresponds to (part of) the neural network model. 
+
+.. rubric:: Training data
+
+Assume that the trajectory data is :math:`(x_i)_{1\le i \le n}` with weights :math:`(v_i)_{1\le i \le n}`,
+such that one can approximate the distribution :math:`\mu` by
+
+.. math::
+   \int_{\mathbb{R}^{d}} f(x) \mu(dx) \approx \frac{\sum_{l=1}^n v_l f(x_l)}{\sum_{l=1}^n v_l}\,,
+
+for test functions :math:`f`.
+
+Let :math:`(y_l)_{1\le l \le n}` be the data, where :math:`y_l = r(x_l)`.
+
+.. rubric:: Loss function of :class:`AutoEncoderTask`
+
+The class :class:`AutoEncoderTask` trains :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and 
+:math:`f_{dec}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` by the autoencoder
+loss in the transformed space :math:`\mathbb{R}^{d_r}`:
+
+.. math::
+
+        & \int_{\mathbb{R}^{d_r}} |f_{dec}\circ f_{enc}(y)-y|^2  r_{\#}\mu(dy) \\
+       =& \int_{\mathbb{R}^{d}} |f_{dec}\circ f_{enc}(r(y))-r(y)|^2  \mu(dx) \\
+    \approx& \frac{\sum_{l=1}^{n} v_l|f_{dec}\circ f_{enc}(y_l) - y_l|^2}{\sum_{l=1}^n v_l}
+
+where :math:`r_{\#}\mu` denotes the pushforward measure of :math:`\mu` by the map :math:`r`.
+
+After training, the collective variables are constructed by 
+
+.. math::
+    \xi = f_{enc}\circ r.
+
+.. _loss_eigenfunction:
+
+.. rubric:: Loss function of :class:`EigenFunctionTask`
+
+The class :class:`EigenFunctionTask` solves the eigenfunctions :math:`\phi_1, \phi_2, \dots, \phi_k:\mathbb{R}^d\rightarrow \mathbb{R}` of the PDE 
+
+.. math::
+
+    -\mathcal{L}\phi = \lambda \phi,
+
+corresponding to the first :math:`k` eigenvalues :math:`0 < \lambda_1 \le \lambda_2 \le \cdots \le \lambda_k`, where 
+
+.. math::
+    \mathcal{L} = -\nabla V \cdot \nabla f + \frac{1}{\beta} \Delta f\,,
+
+for a test function :math:`f`. This is done by training neural network to
+learn functions :math:`g_1, g_2, \cdots, g_k:\mathbb{R}^{d_r}\rightarrow \mathbb{R}` using the data-version of the loss 
+
+.. _loss_eigen:
+
+.. math::
+    \sum_{i=1}^k \omega_j  \frac{\beta^{-1} \mathbf{E}_{\mu} \big[(a \nabla f)\cdot \nabla f_i\big]}{\mbox{var}_{\mu} f_i} 
+    + \alpha \sum_{1 \le i \le j \le k} \Big(\mathbf{E}_{\mu} (f_if_j) - \delta_{ij}\Big)^2,
+
+where 
+
+    #. :math:`\mathbf{E}_{\mu}` and :math:`\mbox{var}_{\mu}` are the expectation and variance with respect to :math:`\mu`, respectively;
+    #. :math:`\alpha` is the penalty parameter;
+    #. :math:`a\in \mathbb{R}^{d\times d}` is a diagonal matrix;
+    #. :math:`\omega_1 > \omega_2 > \dots > \omega_k > 0` are :math:`k` positive constants;
+    #. :math:`f_i=g_i\circ r, 1\le i \le k`.
+
+After training, the collective variables are constructed by 
+
+.. math::
+    \xi = (g_1\circ r, g_2\circ r, \dots, g_k\circ r)^T.
+
+Base class
 ----------
 
 .. autoclass:: TrainingTask
@@ -27,6 +122,7 @@ Learning ColVars by training autoencoder
 
 .. autoclass:: AutoEncoderTask
     :members:
+    :show-inheritance:
 
 Learning ColVars by computing eigenfunctions
 --------------------------------------------
@@ -36,7 +132,7 @@ Learning ColVars by computing eigenfunctions
 
 .. autoclass:: EigenFunctionTask
     :members:
-
+    :show-inheritance:
 """
 
 import molann.ann as ann
@@ -56,16 +152,16 @@ from tqdm import tqdm
 from openmm import unit
 
 class TrainingTask(ABC):
-    r"""Abstract base class of train tasks. A train task should be derived from this class.
+    r"""Abstract base class of train tasks. A training task should be based on this class.
 
     Args:
         traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): An object that holds trajectory data and weights
         pp_layer (:external+molann:class:`molann.ann.PreprocessingANN`): preprocessing layer
-        learning_rate (float): learning rate
         model : neural network to be trained
         load_model_filename (str): filename of a trained model, used to restart from a previous training
         save_model_every_step (int): how often to save model
         model_path (str): the directory to save training results
+        learning_rate (float): learning rate
         k (int): number of collective variables to be learned
         batch_size (int): size of mini-batch 
         num_epochs (int): number of training epochs
@@ -77,16 +173,17 @@ class TrainingTask(ABC):
     Attributes:
         traj_obj: the same as the input parameter
         preprocessing_layer: the same as the input parameter pp_layer
-        learning_rate: the same as the input parameter
         model: the same as the input parameter
         load_model_filename: the same as the input parameter
         save_model_every_step : the same as the input parameter
         model_path : the same as the input parameter
+        learning_rate: the same as the input parameter
         k: the same as the input parameter
         batch_size: the same as the input parameter
         num_epochs: the same as the input parameter
         test_ratio: the same as the input parameter
         optimizer_name: the same as the input parameter
+        optimizer: either :external+pytorch:class:`torch.optim.Adam` or :external+pytorch:class:`torch.optim.SGD`
         device: the same as the input parameter
         verbose (bool): print more information if true
 
@@ -95,11 +192,11 @@ class TrainingTask(ABC):
     def __init__(self, 
                     traj_obj, 
                     pp_layer, 
-                    learning_rate, 
                     model,
                     load_model_filename,
                     save_model_every_step, 
                     model_path, 
+                    learning_rate, 
                     k,
                     batch_size, 
                     num_epochs,
@@ -130,12 +227,14 @@ class TrainingTask(ABC):
         self.writer = SummaryWriter(self.model_path)
 
     def init_model_and_optimizer(self):
-        r"""Initialize model and optimizer
+        r"""Initialize :attr:`model` and :attr:`optimizer`.
 
-        The previously saved model will be loaded for initialization, if load_model_filename points to an existing file.
+        The previously saved model will be loaded for initialization, if :attr:`load_model_filename` points to an existing file.
 
         The attribute :attr:`optimizer` is set to
         :external+pytorch:class:`torch.optim.Adam`, if :attr:`optimizer_name` = 'Adam'; Otherwise, it is set to :external+pytorch:class:`torch.optim.SGD`.
+
+        This function shall be called in the constructor of derived classes.
         """
 
         if self.load_model_filename and os.path.isfile(self.load_model_filename): 
@@ -148,14 +247,16 @@ class TrainingTask(ABC):
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
     def save_model(self, epoch):
-        r"""Save model to file 
+        r"""Save model to file.
 
         Args:
             epoch (int): current epoch
 
-        The (state_dict of the) trained model will be saved at `trained_model.pt` under the output directory. 
+        The state_dict of the trained :attr:`model` will be saved at `trained_model.pt` under the output directory. 
 
-        The corresponding neural network for collective variables is first compiled to a :external+pytorch:class:`torch.jit.ScriptModule`, which is then saved at `trained_cv_scripted.pt` under the output directory.
+        The neural network representing collective variables corresponding to :attr:`model` is first constructed by calling :meth:`colvar_model`, then compiled to a :external+pytorch:class:`torch.jit.ScriptModule`, which is finally saved at `trained_cv_scripted.pt` under the output directory.
+
+        This function is called by :meth:`train`.
 
         """
 
@@ -187,7 +288,8 @@ class TrainingTask(ABC):
     def colvar_model(self):
         r"""
         Return:
-            :external+pytorch:class:`torch.nn.Module` that represents collective variables given :attr:`model`.
+            :external+pytorch:class:`torch.nn.Module` that represents collective variables given :attr:`preprocessing_layer` and :attr:`model`.
+        This function is called by :meth:`save_model`.
         """
         pass
 
@@ -253,29 +355,30 @@ class EigenFunctionTask(TrainingTask):
     r"""The class for training eigenfunctions.
 
     Args:
-        traj_obj (:class:`colvarsfinder.trajectory.WeightedTrajectory`): trajectory data with weights
+        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): An object that holds trajectory data and weights
         pp_layer (:external+molann:class:`molann.ann.PreprocessingANN`): preprocessing layer
-        learning_rate (float): learning rate
-        model (:class:`EigenFunctions`): feedforward neural network to be trained
-        load_model_filename (str): filename of a trained neural network, used to restart from a previous training
+        model (:class:`EigenFunctions`): feedforward neural network to be trained. It corresponds to :math:`g_1, \dots, g_k` in :ref:`loss_eigenfunction`
+        load_model_filename (str): filename of a trained model, used to restart from a previous training
         save_model_every_step (int): how often to save model
         model_path (str): the directory to save training results
         beta (float): the value of :math:`(k_BT)^{-1}`
-        diag_coeff (:external+pytorch:class:`torch.Tensor`): one dimensional
-        alpha (float): penalty constant
-        eig_weights (list of floats): :math:`k` weights in the loss functions
+        diag_coeff (:external+pytorch:class:`torch.Tensor`): 1D PyTorch tensor of length :math:`3N`, which contains the diagonal entries of the matrix :math:`a` in the :ref:`loss_eigenfunction`
+        alpha (float): penalty constant :math:`\alpha` in the loss function
+        eig_weights (list of floats): :math:`k` weights :math:`\omega_1 > \omega_2 > \dots > \omega_k > 0` in the loss functions in :ref:`loss_eigenfunction`
+        learning_rate (float): learning rate
+        sort_eigvals_in_training (bool): whether or not to reorder the :math:`k` eigenfunctions according to estimation of eigenvalues
         k (int): number of eigenfunctions to be learned
-        batch_size (int): batch-size
+        batch_size (int): size of mini-batch 
         num_epochs (int): number of training epochs
-        test_ratio: float in :math:`(0,1)`, the ratio of the amount of states used as test data
-        optimizer_name (str): name of optimizer used for training. either 'Adam' or 'SGD'
+        test_ratio: float in :math:`(0,1)`, ratio of the amount of states used as test data
+        optimizer_name (str): name of optimizer used to train neural networks. either 'Adam' or 'SGD'
         device (:external+pytorch:class:`torch.device`): computing device, either CPU or GPU
         verbose (bool): print more information if true
+
     """
 
     def __init__(self, traj_obj, 
                         pp_layer, 
-                        learning_rate, 
                         model,
                         load_model_filename,
                         save_model_every_step, 
@@ -284,6 +387,7 @@ class EigenFunctionTask(TrainingTask):
                         diag_coeff,
                         alpha,
                         eig_weights, 
+                        learning_rate, 
                         sort_eigvals_in_training=True, 
                         k=1,
                         batch_size=1000, 
@@ -293,46 +397,53 @@ class EigenFunctionTask(TrainingTask):
                         device= torch.device('cpu'),
                         verbose=True):
 
-        super().__init__( traj_obj, pp_layer, learning_rate, model, load_model_filename, 
-                                save_model_every_step, model_path, k, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
+        super().__init__( traj_obj, pp_layer,  model, load_model_filename, save_model_every_step, model_path,  learning_rate, k, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
 
-        self.beta = beta
-        self.alpha = alpha
-        self.sort_eigvals_in_training = sort_eigvals_in_training
-        self.eig_w = eig_weights
         self.model = model
-        self.diag_coeff = diag_coeff
+
+        self._beta = beta
+        self._alpha = alpha
+        self._sort_eigvals_in_training = sort_eigvals_in_training
+        self._eig_w = eig_weights
+        self._diag_coeff = diag_coeff
 
         # list of (i,j) pairs in the penalty term
-        self.ij_list = list(itertools.combinations(range(self.k), 2))
-        self.num_ij_pairs = len(self.ij_list)
+        self._ij_list = list(itertools.combinations(range(self.k), 2))
+        self._num_ij_pairs = len(self._ij_list)
 
         #--- prepare the data ---
-        self.weights = torch.tensor(traj_obj.weights)
+        self._weights = torch.tensor(traj_obj.weights)
 
         if self.verbose: print ('\nEigenfunctions:\n', self.model, flush=True)
 
         self.init_model_and_optimizer()
 
         traj = torch.tensor(traj_obj.trajectory)
-        self.tot_dim = traj.shape[1] * 3 
+        tot_dim = traj.shape[1] * 3 
 
         if self.verbose: print ('\nPrecomputing gradients of features...')
         traj.requires_grad_()
-        self.feature_traj = self.preprocessing_layer(traj)
+        self._feature_traj = self.preprocessing_layer(traj)
 
-        f_grad_vec = [torch.autograd.grad(outputs=self.feature_traj[:,idx].sum(), inputs=traj, retain_graph=True)[0] for idx in range(self.preprocessing_layer.output_dimension())]
+        f_grad_vec = [torch.autograd.grad(outputs=self._feature_traj[:,idx].sum(), inputs=traj, retain_graph=True)[0] for idx in range(self.preprocessing_layer.output_dimension())]
 
-        self.feature_grad_vec = torch.stack([f_grad.reshape((-1, self.tot_dim)) for f_grad in f_grad_vec], dim=2).detach().to(self.device)
+        self._feature_grad_vec = torch.stack([f_grad.reshape((-1, tot_dim)) for f_grad in f_grad_vec], dim=2).detach().to(self.device)
 
-        self.feature_traj = self.feature_traj.detach()
+        self._feature_traj = self._feature_traj.detach()
 
         if self.verbose:
-            print ('  shape of feature_gradient vec:', self.feature_grad_vec.shape)
+            print ('  shape of feature_gradient vec:', self._feature_grad_vec.shape)
             print ('Done\n', flush=True)
 
     def colvar_model(self):
-        reordered_model = _ReorderedEigenFunctions(self.model, self.cvec)
+        r"""
+            Return:
+                :external+molann:class:`molann.ann.MolANN`: :math:`\xi=(g_1\circ r, \dots, g_k\circ r)^T`,
+                built from :attr:`preprocessing_layer` that represents
+                :math:`r` and :attr:`model` that represents :math:`g_1, g_2,
+                \cdots, g_k`. See :ref:`loss_eigenfunction`.
+        """
+        reordered_model = _ReorderedEigenFunctions(self.model, self._cvec)
         return ann.MolANN(self.preprocessing_layer, reordered_model)
 
     def loss_func(self, X, weight, f_grad):
@@ -357,35 +468,36 @@ class EigenFunctionTask(TrainingTask):
         var_list = [(y[:,idx]**2 * weight).sum() / tot_weight - mean_list[idx]**2 for idx in range(self.k)]
 
         # Compute Rayleigh quotients as eigenvalues
-        eig_vals = torch.tensor([1.0 / (tot_weight * self.beta) * torch.sum((y_grad_vec[:,:,idx]**2 * self.diag_coeff).sum(dim=1) * weight) / var_list[idx] for idx in range(self.k)])
+        eig_vals = torch.tensor([1.0 / (tot_weight * self._beta) * torch.sum((y_grad_vec[:,:,idx]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[idx] for idx in range(self.k)])
 
         cvec = range(self.k)
-        if self.sort_eigvals_in_training :
+        if self._sort_eigvals_in_training :
             cvec = np.argsort(eig_vals)
             # Sort the eigenvalues 
             eig_vals = eig_vals[cvec]
 
-        non_penalty_loss = 1.0 / (tot_weight * self.beta) * sum([self.eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self.diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.k)])
+        non_penalty_loss = 1.0 / (tot_weight * self._beta) * sum([self._eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.k)])
 
         penalty = torch.zeros(1, requires_grad=True)
 
         # Sum of squares of variance for each eigenfunction
         penalty = sum([(var_list[idx] - 1.0)**2 for idx in range(self.k)])
 
-        for idx in range(self.num_ij_pairs):
-          ij = self.ij_list[idx]
+        for idx in range(self._num_ij_pairs):
+          ij = self._ij_list[idx]
           # Sum of squares of covariance between two different eigenfunctions
           penalty += ((y[:, ij[0]] * y[:, ij[1]] * weight).sum() / tot_weight - mean_list[ij[0]] * mean_list[ij[1]])**2
 
-        loss = 1.0 * non_penalty_loss + self.alpha * penalty 
+        loss = 1.0 * non_penalty_loss + self._alpha * penalty 
 
         return loss, eig_vals, non_penalty_loss, penalty, cvec
 
     def train(self):
-        """Function to train the model
+        r"""
+        Function to train the model.
         """
         # split the dataset into a training set (and its associated weights) and a test set
-        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self.feature_traj, self.weights, torch.arange(self.feature_traj.shape[0], dtype=torch.long), test_size=self.test_ratio)  
+        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj, self._weights, torch.arange(self._feature_traj.shape[0], dtype=torch.long), test_size=self.test_ratio)  
 
         # method to construct data batches and iterate over them
         train_loader = torch.utils.data.DataLoader(dataset=torch.utils.data.TensorDataset(X_train, w_train, index_train),
@@ -419,10 +531,10 @@ class EigenFunctionTask(TrainingTask):
                 # Clear gradients w.r.t. parameters
                 self.optimizer.zero_grad(set_to_none=True)
 
-                f_grad = self.feature_grad_vec[index, :, :].to(self.device)
+                f_grad = self._feature_grad_vec[index, :, :].to(self.device)
 
                 # Evaluate loss
-                loss, eig_vals, non_penalty_loss, penalty, self.cvec = self.loss_func(X, weight, f_grad)
+                loss, eig_vals, non_penalty_loss, penalty, self._cvec = self.loss_func(X, weight, f_grad)
                 # Get gradient with respect to parameters of the model
                 loss.backward(retain_graph=True)
                 # Store loss
@@ -439,7 +551,7 @@ class EigenFunctionTask(TrainingTask):
                 X, weight, index = X.to(self.device), weight.to(self.device), index.to(self.device)
 
                 X.requires_grad_()
-                f_grad = self.feature_grad_vec[index, :, :].to(self.device)
+                f_grad = self._feature_grad_vec[index, :, :].to(self.device)
                 loss, eig_vals, non_penalty_loss, penalty, cvec = self.loss_func(X, weight, f_grad)
                 # Store loss
                 test_loss.append(loss)
@@ -490,11 +602,11 @@ class AutoEncoderTask(TrainingTask):
     Args:
         traj_obj (:class:`colvarsfinder.trajectory.WeightedTrajectory`): trajectory data with weights
         pp_layer (:external+molann:class:`molann.ann.PreprocessingANN`): preprocessing layer
-        learning_rate (float): learning rate
         model (:class:`AutoEncoder`): neural network to be trained
         load_model_filename (str): filename of a trained neural network, used to restart from a previous training
         save_model_every_step (int): how often to save model
         model_path (str): the directory to save training results
+        learning_rate (float): learning rate
         k (int): encoded dimension 
         batch_size (int): batch-size
         num_epochs (int): number of training epochs
@@ -506,11 +618,11 @@ class AutoEncoderTask(TrainingTask):
     """
     def __init__(self, traj_obj, 
                         pp_layer, 
-                        learning_rate, 
                         model,
                         load_model_filename,
                         save_model_every_step, 
                         model_path, 
+                        learning_rate, 
                         k=1,
                         batch_size=1000, 
                         num_epochs=10,
@@ -519,17 +631,16 @@ class AutoEncoderTask(TrainingTask):
                         device= torch.device('cpu'),
                         verbose=True):
 
-        super().__init__( traj_obj, pp_layer, learning_rate, model, load_model_filename, model_save_dir, 
-                                save_model_every_step, model_path, k, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
+        super().__init__( traj_obj, pp_layer,  model, load_model_filename, save_model_every_step, model_path, learning_rate, k, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
 
         self.init_model_and_optimizer()
 
         #--- prepare the data ---
         self.weights = torch.tensor(traj_obj.weights)
-        self.feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory))
+        self._feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory))
 
         # print information of trajectory
-        if self.verbose: print ( '\nShape of trajectory data array:\n {}'.format(self.feature_traj.shape), flush=True )
+        if self.verbose: print ( '\nShape of trajectory data array:\n {}'.format(self._feature_traj.shape), flush=True )
 
     def colvar_model(self):
         return ann.MolANN(self.preprocessing_layer, self.model.encoder)
@@ -544,7 +655,7 @@ class AutoEncoderTask(TrainingTask):
         """Function to train the model
         """
         # split the dataset into a training set (and its associated weights) and a test set
-        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self.feature_traj, self.weights, torch.arange(self.feature_traj.shape[0], dtype=torch.long), test_size=self.test_ratio)  
+        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj, self.weights, torch.arange(self._feature_traj.shape[0], dtype=torch.long), test_size=self.test_ratio)  
 
         # method to construct data batches and iterate over them
         train_loader = torch.utils.data.DataLoader(dataset = torch.utils.data.TensorDataset(X_train, w_train, index_train),

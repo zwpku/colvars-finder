@@ -1,4 +1,4 @@
-r"""Trajectory Data --- :mod:`colvarsfinder.utils`
+r"""Trajectory data --- :mod:`colvarsfinder.utils`
 =================================================================
 
 :Author: Wei Zhang
@@ -9,23 +9,25 @@ This module implements the function :meth:`integrate_langevin` for sampling
 trajectory data, the function :meth:`calc_weights` for calculating weights of
 the states, and the class :class:`WeightedTrajectory` for holding trajectory information.
 
+.. rubric:: Typical usage
+
 The main purpose of this module is to prepare training data for the training tasks in the module :mod:`colvarsfinder.core`.
-Assume that the invariant distribution of the system is :math:`\mu` at temperature :math:`T_{sys}`.
+Assume that the invariant distribution of the system is :math:`\mu` at temperature :math:`T`.
 Direct simulation becomes inefficient, when there is metastability in system's dynamics.
-To mitigate the difficulty due to metastability, one can use
-:meth:`integrate_langevin` to sample states :math:`(x_i)_{1\le i \le l}` of
-the (biased) system at a slightly high temperature :math:`T_{sim} > T_{sys}`, and
-then compute the weights :math:`(w_i)_{1\le i \le l}` of the sampled states using
-:meth:`calc_weights`. The weights are calculated in a way such that one
-can approximate the distribution :math:`\mu` using the biased data :math:`(x_i)_{1\le i \le l}` by
+To mitigate the difficulty due to metastability, one can use this module in the following two steps.
+
+    #. Run :meth:`integrate_langevin` to sample states :math:`(x_l)_{1\le l \le n}` of the (biased) system at a slightly high temperature :math:`T_{sim} > T`; 
+
+    #. Use :meth:`calc_weights` to generate a CSV file that contains the weights :math:`(w_l)_{1\le l \le n}` of the sampled states. 
+
+The weights are calculated in a way such that one can approximate the distribution :math:`\mu` using the biased data :math:`(x_l)_{1\le l \le n}` by
 
 .. math::
-   \int_{\mathbb{R}^{3n}} f(x) \mu(dx) \approx \frac{\sum_{i=1}^l w_i
-   f(x_i)}{\sum_{i=1}^l w_i}\,,
+   \int_{\mathbb{R}^{d}} f(x) \mu(dx) \approx \frac{\sum_{l=1}^n v_l f(x_l)}{\sum_{l=1}^n v_l}\,,
 
-for test functions :math:`f`.
+for test functions :math:`f`, where :math:`d=3N` is the dimension of the system.
 
-The class :class:`WeightedTrajectory` stores information of the states and their weights, which can then be passed on to training task classes in the module :mod:`colvarsfinder.core`.
+Using the states and weights generated in the above two steps, one can construct the class :class:`WeightedTrajectory`, which can then be passed on to training task classes in the module :mod:`colvarsfinder.core`.
 
 Classes
 -------
@@ -82,8 +84,8 @@ class WeightedTrajectory:
       
     Attributes:
         trajectory (3d numpy array): states in the trajectory, shape:
-            :math:`[l, n, 3]`, where :math:`l` =n_frames is the number of states, 
-            and :math:`n` is the number of atoms of the system
+            :math:`[n, N, 3]`, where :math:`n` =n_frames is the number of states, 
+            and :math:`N` is the number of atoms of the system
         start_time (float): time of the first state in the trajectory, unit: ps
         dt (float): timestep of the trajectory data, unit: ps
         n_frames (int): number of states in the trajectory
@@ -267,13 +269,13 @@ def calc_weights(sys_temp, sampling_temp, csv_filename, traj_weight_filename, en
         traj_weight_filename (str): filename to output the weights of trajectory
         energy_col_idx (int): the index of the column of the CSV file, based on which the weights will be calculated.
 
-    Let the system's true temperature and the sampling temperature be :math:`T_{sys}` and :math:`T_{sim}`, respectively.
-    Define :math:`\beta_{sys}=(k_B T_{sys})^{-1}` and :math:`\beta_{sim}=(k_B T_{sim})^{-1}`.
+    Let the system's true temperature and the sampling temperature be :math:`T` and :math:`T_{sim}`, respectively.
+    Define :math:`\beta=(k_B T)^{-1}` and :math:`\beta_{sim}=(k_B T_{sim})^{-1}`.
     This function uses certain column (specified by energy_col_idx) of the CSV file (specified by csv_filename) as energy, and computes the weights 
     simply by 
 
     .. math::
-        w_i = \frac{1}{Z} \mathrm{e}^{-(\beta_{sys}-\beta_{sim}) V_i}\,, 
+        v_i = \frac{1}{Z} \mathrm{e}^{-(\beta_{sys}-\beta_{sim}) V_i}\,, 
 
     where :math:`i=1,\dots, l` is the index of states, :math:`V_i` is the energy value, and :math:`Z` is the normalizing constant such that the mean value of the weights are one.
 
