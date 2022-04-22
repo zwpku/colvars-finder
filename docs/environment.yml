@@ -12,7 +12,7 @@ dependencies:
     - pandas
     - pip>=21.1
     - mdanalysis==2.0.0
-      molann>=1.0.0
-      openmm
-      openmmplumed
+    - molann>=1.0.0
+    - openmm
+    - openmmplumed
 
