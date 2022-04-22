@@ -7,14 +7,14 @@ Installation
 
 .. code-block:: console
 
-   pip install molann
+   pip install colvars-finder
 
 .. rubric:: from source
 
 .. code-block:: console
 
-   git clone https://github.com/zwpku/molann
-   cd molann
+   git clone https://github.com/zwpku/colvars-finder
+   cd colvars-finder
    python -m build
    python -m pip install .
 

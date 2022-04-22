@@ -1,4 +1,4 @@
-name: colvars-finder
+name: molann
 channels:
     - conda-forge
     - defaults
@@ -9,12 +9,8 @@ dependencies:
     - setuptools
     - pytorch==1.10
     - numpy>=1.20.0
-    - matplotlib
-    - tqdm 
-    - scikit-learn==1.0.2
     - pandas
     - pyyaml
     - pip>=21.1
     - mdanalysis==2.0.0
-    - pip:
-      - opencv-python
+

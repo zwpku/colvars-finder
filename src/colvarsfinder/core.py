@@ -73,7 +73,7 @@ class TrainingTask(ABC):
         num_epochs (int): number of training epochs
         test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data
         optimizer_name (str): name of optimizer used to train neural networks. either 'Adam' or 'SGD'
-        device (:external+pytorch:class:`torch.device`): computing device, either CPU or GPU
+        device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
         verbose (bool): print more information if true
 
     Attributes:
@@ -152,15 +152,16 @@ class TrainingTask(ABC):
         else:
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
-    def save_model(self, epoch):
+    def save_model(self, epoch, description=""):
         r"""Save model to file.
 
         Args:
             epoch (int): current epoch
+            description (str): description of the filename
 
-        The state_dict of the trained :attr:`model` will be saved at `trained_model.pt` under the output directory. 
+        The state_dict of the trained :attr:`model` will be saved at f'model{description}.pt' under the output directory. 
 
-        The neural network representing collective variables corresponding to :attr:`model` is first constructed by calling :meth:`colvar_model`, then compiled to a :external+pytorch:class:`torch.jit.ScriptModule`, which is finally saved at `trained_cv_scripted.pt` under the output directory.
+        The neural network representing collective variables corresponding to :attr:`model` is first constructed by calling :meth:`colvar_model`, then compiled to a :external+pytorch:class:`torch.jit.ScriptModule`, which is finally saved at f'scripted_cv{description}.pt' under the output directory.
 
         This function is called by :meth:`train`.
 
@@ -169,17 +170,17 @@ class TrainingTask(ABC):
         if self.verbose: print (f"\n\nEpoch={epoch}:") 
 
         #save the model
-        trained_model_filename = f'{self.model_path}/trained_model.pt'
-        torch.save(self.model.state_dict(), trained_model_filename)  
+        model_filename = f'{self.model_path}/model{description}.pt'
+        torch.save(self.model.state_dict(), model_filename)  
 
-        if self.verbose: print (f'  trained model saved at:\n\t{trained_model_filename}')
+        if self.verbose: print (f'  trained model saved at:\n\t{model_filename}')
 
         cv = self.colvar_model()
 
-        trained_cv_script_filename = f'{self.model_path}/trained_cv_scripted.pt'
-        torch.jit.script(cv).save(trained_cv_script_filename)
+        scripted_cv_filename = f'{self.model_path}/scripted_cv{description}.pt'
+        torch.jit.script(cv).save(scripted_cv_filename)
 
-        if self.verbose: print (f'  script model for CVs saved at:\n\t{trained_cv_script_filename}\n', flush=True)
+        if self.verbose: print (f'  script model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
 
     @abstractmethod
     def train(self):
@@ -264,12 +265,12 @@ class EigenFunctionTask(TrainingTask):
         num_epochs (int): number of training epochs
         test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data
         optimizer_name (str): name of optimizer used to train neural networks. either 'Adam' or 'SGD'
-        device (:external+pytorch:class:`torch.device`): computing device, either CPU or GPU
+        device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
         verbose (bool): print more information if true
 
     Attributes:
         model: the same as the input parameter
-
+        loss_list: list of loss values on training data and test data during the training
     """
 
     def __init__(self, traj_obj, 
@@ -424,6 +425,7 @@ class EigenFunctionTask(TrainingTask):
 
         # --- start the training over the required number of epochs ---
         self.loss_list = []
+        min_loss = float("inf") 
 
         print ("\nTraining starts.\n%d epochs in total, batch size: %d" % (self.num_epochs, self.batch_size)) 
         print ("\nTrain set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_train), len(train_loader), len(train_loader) * self.num_epochs), flush=True)
@@ -453,14 +455,18 @@ class EigenFunctionTask(TrainingTask):
                 # Updating parameters
                 self.optimizer.step()
 
+            if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
+                self.save_model(epoch)
+                if loss < min_loss:
+                    min_loss = loss
+                    self.save_model(epoch, '_best')
+
             # Evaluate the test loss on the test dataset
             test_loss = []
             test_eig_vals = []
             test_penalty = []
             for iteration, [X, weight, index] in enumerate(test_loader):
-
                 X, weight, index = X.to(self.device), weight.to(self.device), index.to(self.device)
-
                 X.requires_grad_()
                 f_grad = self._feature_grad_vec[index, :, :].to(self.device)
                 loss, eig_vals, non_penalty_loss, penalty, cvec = self.loss_func(X, weight, f_grad)
@@ -477,9 +483,6 @@ class EigenFunctionTask(TrainingTask):
 
             for idx in range(self.k):
                 self.writer.add_scalar(f'{idx}th eigenvalue', torch.mean(torch.stack(test_eig_vals)[:,idx]), epoch)
-
-            if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
-                self.save_model(epoch)
 
 class AutoEncoder(torch.nn.Module):
     r"""Neural network representing an autoencoder
@@ -532,7 +535,7 @@ class AutoEncoderTask(TrainingTask):
         num_epochs (int): number of training epochs
         test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data
         optimizer_name (str): name of optimizer used for training. either 'Adam' or 'SGD'
-        device (:external+pytorch:class:`torch.device`): computing device, either CPU or GPU
+        device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
         verbose (bool): print more information if true
         
     This task trains autoencoder using the loss discussed in :ref:`loss_autoencoder`. The neural networks representing the encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and the decoder :math:`f_{enc}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` are stored in :attr:`model.encoder` and :attr:`model.decoder`, respectively.
@@ -540,6 +543,7 @@ class AutoEncoderTask(TrainingTask):
     Attributes:
         model: the same as the input parameter
         preprocessing_layer: the same as the input parameter pp_layer
+        loss_list: list of loss values on training data and test data during the training
 
     """
     def __init__(self, traj_obj, 
@@ -600,6 +604,7 @@ class AutoEncoderTask(TrainingTask):
 
         # --- start the training over the required number of epochs ---
         self.loss_list = []
+        min_loss = float("inf") 
 
         print ("\nTraining starts.\n%d epochs in total, batch size: %d" % (self.num_epochs, self.batch_size)) 
         print ("\nTrain set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_train), len(train_loader), len(train_loader) * self.num_epochs), flush=True)
@@ -623,6 +628,13 @@ class AutoEncoderTask(TrainingTask):
                 train_loss.append(loss)
                 # Updating parameters
                 self.optimizer.step()
+
+            if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
+                self.save_model(epoch)
+                if loss < min_loss:
+                    min_loss = loss
+                    self.save_model(epoch, '_best')
+
             # Evaluate the test loss on the test dataset
             self.model.eval()
             with torch.no_grad():
@@ -639,7 +651,4 @@ class AutoEncoderTask(TrainingTask):
                 
             self.writer.add_scalar('Loss/train', torch.mean(torch.tensor(train_loss)), epoch)
             self.writer.add_scalar('Loss/test', torch.mean(torch.tensor(test_loss)), epoch)
-
-            if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
-                self.save_model(epoch)
 
