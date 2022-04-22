@@ -5,7 +5,7 @@ Find collective variables (CVs) of molecular systems by training neural networks
 
 Two methods are implemented by either **training autoencoder** or **computing eigenfunctions**.
 
-See `_Mathematical Backgrounds`_.
+See `Mathematical Backgrounds`_.
 
 **This package is under development**.
 
