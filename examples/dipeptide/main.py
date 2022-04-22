@@ -227,8 +227,7 @@ def train(args):
         if args.verbose: print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(feature_dim, args.k), model)
 
         # define training task
-        train_obj = AutoEncoderTask(traj_obj, pp_layer,  model, args.load_model_filename, 
-                args.save_model_every_step, model_path, args.learning_rate, args.k, args.batch_size, args.num_epochs, args.test_ratio,
+        train_obj = AutoEncoderTask(traj_obj, pp_layer,  model, args.load_model_filename, args.save_model_every_step, model_path, args.learning_rate, args.batch_size, args.num_epochs, args.test_ratio,
                 args.optimizer_name, args.device, args.verbose)
 
     else : # task_type: Eigenfunction
