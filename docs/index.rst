@@ -8,6 +8,9 @@ Documentation of ColVars-Finder
 
 This package implements methods for finding collective variables of molecular systems by training artificial neural networks.
 
+.. note::
+
+   The package is under development.
 
 .. toctree::
    :maxdepth: 2

@@ -20,6 +20,8 @@ such that one can approximate the distribution :math:`\mu` by
 for test functions :math:`f`. These data, as well as the weights, can be generated using the module :mod:`colvarsfinder.utils`.
 Let :math:`(y_l)_{1\le l \le n}` be the data, where :math:`y_l = r(x_l)`.
 
+.. _rep_colvars:
+
 .. rubric:: Representation of ColVars
 
 In applications, we often expect that the collective variables,
@@ -38,9 +40,11 @@ identity map, and :math:`g` is the map that we want to learn by training neural 
 In the training tasks of :mod:`colvarsfinder.core`, :math:`r` is specified in the input parameter
 as the preprocessing layer using the package `MolANN <http:/github.com/zwpku/molann>`__, and :math:`g` corresponds to (part of) the neural network model that is to be trained. 
 
-.. rubric:: Loss function of :class:`colvarsfinder.core.AutoEncoderTask`
+.. _loss_autoencoder:
 
-This class trains :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and 
+.. rubric:: Loss function for training autoencoder 
+
+The class :class:`colvarsfinder.core.AutoEncoderTask` trains :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and 
 :math:`f_{dec}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` by the autoencoder
 loss in the transformed space :math:`\mathbb{R}^{d_r}`:
 
@@ -59,9 +63,9 @@ After training, the collective variables are constructed by
 
 .. _loss_eigenfunction:
 
-.. rubric:: Loss function of :class:`colvarsfinder.core.EigenFunctionTask`
+.. rubric:: Loss function for training eigenfunctions 
 
-This class solves the eigenfunctions :math:`\phi_1, \phi_2, \dots, \phi_k:\mathbb{R}^d\rightarrow \mathbb{R}` of the PDE 
+The class :class:`colvarsfinder.core.EigenFunctionTask` solves the eigenfunctions :math:`\phi_1, \phi_2, \dots, \phi_k:\mathbb{R}^d\rightarrow \mathbb{R}` of the PDE 
 
 .. math::
 
