@@ -18,7 +18,6 @@ such that one can approximate the distribution :math:`\mu` by
    \int_{\mathbb{R}^{d}} f(x) \mu(dx) \approx \frac{\sum_{l=1}^n v_l f(x_l)}{\sum_{l=1}^n v_l}\,,
 
 for test functions :math:`f`. These data, as well as the weights, can be generated using the module :mod:`colvarsfinder.utils`.
-Let :math:`(y_l)_{1\le l \le n}` be the data, where :math:`y_l = r(x_l)`.
 
 .. _rep_colvars:
 
@@ -46,15 +45,15 @@ as the preprocessing layer using the package `MolANN <http:/github.com/zwpku/mol
 
 The class :class:`colvarsfinder.core.AutoEncoderTask` trains :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and 
 :math:`f_{dec}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` by the autoencoder
-loss in the transformed space :math:`\mathbb{R}^{d_r}`:
+loss in the *transformed* space :math:`\mathbb{R}^{d_r}`:
 
 .. math::
 
         & \int_{\mathbb{R}^{d_r}} |f_{dec}\circ f_{enc}(y)-y|^2  r_{\#}\mu(dy) \\
-       =& \int_{\mathbb{R}^{d}} |f_{dec}\circ f_{enc}(r(y))-r(y)|^2  \mu(dx) \\
+       =& \int_{\mathbb{R}^{d}} |f_{dec}\circ f_{enc}(r(x))-r(x)|^2  \mu(dx) \\
     \approx& \frac{\sum_{l=1}^{n} v_l|f_{dec}\circ f_{enc}(y_l) - y_l|^2}{\sum_{l=1}^n v_l},
 
-where :math:`r_{\#}\mu` denotes the pushforward measure of :math:`\mu` by the map :math:`r`.
+where :math:`r_{\#}\mu` denotes the pushforward measure of :math:`\mu` by the map :math:`r`, and :math:`y_l = r(x_l)`.
 
 After training, the collective variables are constructed by 
 
