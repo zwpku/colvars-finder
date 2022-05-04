@@ -161,7 +161,7 @@ class TrainingTask(ABC):
 
         The state_dict of the trained :attr:`model` will be saved at f'model{description}.pt' under the output directory. 
 
-        The neural network representing collective variables corresponding to :attr:`model` is first constructed by calling :meth:`colvar_model`, then compiled to a :external+pytorch:class:`torch.jit.ScriptModule`, which is finally saved at f'scripted_cv{description}.pt' under the output directory.
+        The neural network representing collective variables corresponding to :attr:`model` is first constructed by calling :meth:`colvar_model`, then compiled to a :external+pytorch:class:`torch.jit.ScriptModule`, which is finally saved under the output directory. If the device is GPU, both CPU and CUDA versions will be saved.
 
         This function is called by :meth:`train`.
 
@@ -177,17 +177,19 @@ class TrainingTask(ABC):
 
         cv = self.colvar_model()
 
-        scripted_cv_filename = f'{self.model_path}/scripted_cv{description}.pt'
-        torch.jit.script(cv).save(scripted_cv_filename)
-
-        if self.verbose: print (f'  script model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
-
         if self.device.type == 'cuda':
+            scripted_cv_filename = f'{self.model_path}/scripted_cv_gpu{description}.pt'
+            torch.jit.script(cv).save(scripted_cv_filename)
+            if self.verbose: print (f'  script (GPU) model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
+
             cv.to('cpu') 
             scripted_cv_filename = f'{self.model_path}/scripted_cv_cpu{description}.pt'
             torch.jit.script(cv).save(scripted_cv_filename)
-
-        if self.verbose: print (f'  CPU-version of script model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
+            if self.verbose: print (f'  script (CPU) model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
+        else :
+            scripted_cv_filename = f'{self.model_path}/scripted_cv_cpu{description}.pt'
+            torch.jit.script(cv).save(scripted_cv_filename)
+            if self.verbose: print (f'  script (CPU) model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
 
     @abstractmethod
     def train(self):
@@ -321,22 +323,9 @@ class EigenFunctionTask(TrainingTask):
 
         self.init_model_and_optimizer()
 
-        traj = torch.tensor(traj_obj.trajectory)
-        tot_dim = traj.shape[1] * 3 
+        self._traj = torch.tensor(traj_obj.trajectory)
 
-        if self.verbose: print ('\nPrecomputing gradients of features...')
-        traj.requires_grad_()
-        self._feature_traj = self.preprocessing_layer(traj)
-
-        f_grad_vec = [torch.autograd.grad(outputs=self._feature_traj[:,idx].sum(), inputs=traj, retain_graph=True)[0] for idx in range(self.preprocessing_layer.output_dimension())]
-
-        self._feature_grad_vec = torch.stack([f_grad.reshape((-1, tot_dim)) for f_grad in f_grad_vec], dim=2).detach().to(self.device)
-
-        self._feature_traj = self._feature_traj.detach()
-
-        if self.verbose:
-            print ('  shape of feature_gradient vec:', self._feature_grad_vec.shape)
-            print ('Done\n', flush=True)
+        self.tot_dim = self._traj.shape[1] * 3
 
     def get_reordered_eigenfunctions(self, model, cvec):
         r"""
@@ -365,19 +354,16 @@ class EigenFunctionTask(TrainingTask):
         reordered_model = self.get_reordered_eigenfunctions(self.model, self._cvec)
         return ann.MolANN(self.preprocessing_layer, reordered_model)
 
-    def loss_func(self, X, weight, f_grad):
+    def loss_func(self, X, weight):
         # Evaluate function value on data
-        y = self.model(X)
+        y = self.model(self.preprocessing_layer(X))
 
         """
-          Compute gradients with respect to features
+          Compute gradients with respect to coordinates
           The flag create_graph=True is needed, because later we need to compute
           gradients w.r.t. parameters; Please refer to the torch.autograd.grad function for details.
         """
-        y_grad_wrt_f_vec = torch.stack([torch.autograd.grad(outputs=y[:,idx].sum(), inputs=X, retain_graph=True, create_graph=True)[0] for idx in range(self.k)], dim=2)
-
-        # use chain rule to get gradients wrt positions
-        y_grad_vec = torch.bmm(f_grad, y_grad_wrt_f_vec)
+        y_grad_vec = torch.stack([torch.autograd.grad(outputs=y[:,idx].sum(), inputs=X, retain_graph=True, create_graph=True)[0].reshape((-1,self.tot_dim)) for idx in range(self.k)], dim=2)
 
         # Total weight, will be used for normalization 
         tot_weight = weight.sum()
@@ -416,7 +402,7 @@ class EigenFunctionTask(TrainingTask):
         Function to train the model.
         """
         # split the dataset into a training set (and its associated weights) and a test set
-        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj, self._weights, torch.arange(self._feature_traj.shape[0], dtype=torch.long), test_size=self.test_ratio)  
+        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._traj, self._weights, torch.arange(self._traj.shape[0], dtype=torch.long), test_size=self.test_ratio)  
 
         # method to construct data batches and iterate over them
         train_loader = torch.utils.data.DataLoader(dataset=torch.utils.data.TensorDataset(X_train, w_train, index_train),
@@ -451,10 +437,8 @@ class EigenFunctionTask(TrainingTask):
                 # Clear gradients w.r.t. parameters
                 self.optimizer.zero_grad(set_to_none=True)
 
-                f_grad = self._feature_grad_vec[index, :, :].to(self.device)
-
                 # Evaluate loss
-                loss, eig_vals, non_penalty_loss, penalty, self._cvec = self.loss_func(X, weight, f_grad)
+                loss, eig_vals, non_penalty_loss, penalty, self._cvec = self.loss_func(X, weight)
                 # Get gradient with respect to parameters of the model
                 loss.backward(retain_graph=True)
                 # Store loss
@@ -475,8 +459,7 @@ class EigenFunctionTask(TrainingTask):
             for iteration, [X, weight, index] in enumerate(test_loader):
                 X, weight, index = X.to(self.device), weight.to(self.device), index.to(self.device)
                 X.requires_grad_()
-                f_grad = self._feature_grad_vec[index, :, :].to(self.device)
-                loss, eig_vals, non_penalty_loss, penalty, cvec = self.loss_func(X, weight, f_grad)
+                loss, eig_vals, non_penalty_loss, penalty, cvec = self.loss_func(X, weight)
                 # Store loss
                 test_loss.append(loss)
                 test_eig_vals.append(eig_vals)
