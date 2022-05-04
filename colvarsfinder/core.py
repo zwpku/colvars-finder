@@ -112,7 +112,7 @@ class TrainingTask(ABC):
                     verbose):
 
         self.traj_obj = traj_obj
-        self.preprocessing_layer = pp_layer
+        self.preprocessing_layer = pp_layer.to(device)
         self.learning_rate = learning_rate
         self.batch_size = batch_size 
         self.num_epochs= num_epochs
@@ -186,6 +186,7 @@ class TrainingTask(ABC):
             scripted_cv_filename = f'{self.model_path}/scripted_cv_cpu{description}.pt'
             torch.jit.script(cv).save(scripted_cv_filename)
             if self.verbose: print (f'  script (CPU) model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
+            cv.to(self.device)
         else :
             scripted_cv_filename = f'{self.model_path}/scripted_cv_cpu{description}.pt'
             torch.jit.script(cv).save(scripted_cv_filename)
