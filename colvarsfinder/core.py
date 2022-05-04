@@ -144,7 +144,7 @@ class TrainingTask(ABC):
         """
 
         if self.load_model_filename and os.path.isfile(self.load_model_filename): 
-            self.model.load_state_dict(torch.load(self.load_model_filename))
+            self.model.load_state_dict(torch.load(self.load_model_filename, map_location=self.device))
             if self.verbose: print (f'model parameters loaded from: {self.load_model_filename}')
 
         if self.optimizer_name == 'Adam':
@@ -181,6 +181,13 @@ class TrainingTask(ABC):
         torch.jit.script(cv).save(scripted_cv_filename)
 
         if self.verbose: print (f'  script model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
+
+        if self.device.type == 'cuda':
+            cv.to('cpu') 
+            scripted_cv_filename = f'{self.model_path}/scripted_cv_cpu{description}.pt'
+            torch.jit.script(cv).save(scripted_cv_filename)
+
+        if self.verbose: print (f'  CPU-version of script model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
 
     @abstractmethod
     def train(self):
