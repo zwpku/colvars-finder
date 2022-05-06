@@ -133,7 +133,7 @@ class WeightedTrajectory:
                 print ('\nloading weights from file: ', weight_filename)
                 print ('\nWeights:\n', time_weight_vec['weight'].describe(percentiles=[0.2, 0.4, 0.6, 0.8]))
 
-            if self.start_time - time_weight_vec.iloc[0,0] > 0.01 or self.n_frames != len(time_weight_vec.index) :
+            if abs(self.start_time - time_weight_vec.iloc[0,0]) > 0.01 or self.n_frames != len(time_weight_vec.index) :
                 raise ValueError('Time in weight file does match the trajectory data!\n')
             else :
                 if verbose: print ('\nCompatibility of weights and trajectory verified.\n')
