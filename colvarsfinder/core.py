@@ -152,7 +152,7 @@ class TrainingTask(ABC):
         else:
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
-    def save_model(self, epoch, description=""):
+    def save_model(self, epoch, description="latest"):
         r"""Save model to file.
 
         Args:
@@ -169,26 +169,36 @@ class TrainingTask(ABC):
 
         if self.verbose: print (f"\n\nEpoch={epoch}:") 
 
+        model_save_dir = f'{self.model_path}/{description}'
+
+        if not os.path.exists(model_save_dir):
+            os.makedirs(model_save_dir)
+
         #save the model
-        model_filename = f'{self.model_path}/model{description}.pt'
+        model_filename = f'{model_save_dir}/model.pt'
         torch.save(self.model.state_dict(), model_filename)  
+
+        for idx in range(self.k):
+            for name, param in self.model.eigen_funcs[idx].named_parameters():
+                fname = '%s/%d_' % (model_save_dir, idx) + name.replace('.', '_') + '.txt'
+                np.savetxt(fname, param.detach().numpy())
 
         if self.verbose: print (f'  trained model saved at:\n\t{model_filename}')
 
         cv = self.colvar_model()
 
         if self.device.type == 'cuda':
-            scripted_cv_filename = f'{self.model_path}/scripted_cv_gpu{description}.pt'
+            scripted_cv_filename = f'{model_save_dir}/scripted_cv_gpu.pt'
             torch.jit.script(cv).save(scripted_cv_filename)
             if self.verbose: print (f'  script (GPU) model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
 
             cv.to('cpu') 
-            scripted_cv_filename = f'{self.model_path}/scripted_cv_cpu{description}.pt'
+            scripted_cv_filename = f'{model_save_dir}/scripted_cv_cpu.pt'
             torch.jit.script(cv).save(scripted_cv_filename)
             if self.verbose: print (f'  script (CPU) model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
             cv.to(self.device)
         else :
-            scripted_cv_filename = f'{self.model_path}/scripted_cv_cpu{description}.pt'
+            scripted_cv_filename = f'{model_save_dir}/scripted_cv_cpu.pt'
             torch.jit.script(cv).save(scripted_cv_filename)
             if self.verbose: print (f'  script (CPU) model for CVs saved at:\n\t{scripted_cv_filename}\n', flush=True)
 
@@ -451,7 +461,7 @@ class EigenFunctionTask(TrainingTask):
                 self.save_model(epoch)
                 if loss < min_loss:
                     min_loss = loss
-                    self.save_model(epoch, '_best')
+                    self.save_model(epoch, 'best')
 
             # Evaluate the test loss on the test dataset
             test_loss = []
@@ -624,7 +634,7 @@ class AutoEncoderTask(TrainingTask):
                 self.save_model(epoch)
                 if loss < min_loss:
                     min_loss = loss
-                    self.save_model(epoch, '_best')
+                    self.save_model(epoch, 'best')
 
             # Evaluate the test loss on the test dataset
             self.model.eval()
