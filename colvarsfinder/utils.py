@@ -93,35 +93,47 @@ class WeightedTrajectory:
 
 
     """
-    def __init__(self, universe, weight_filename=None, min_w=0.0, max_w=float("inf"), verbose=True):
+    def __init__(self, universe=None, traj_filename=None, weight_filename=None, min_w=0.0, max_w=float("inf"), verbose=True):
 
-        if verbose: print ('\nloading trajectory to numpy array...', end='') 
+        
+        if universe is not None :
 
-        # load trajectory 
-        self.trajectory = universe.trajectory.timeseries(order='fac')
+            if verbose: print ('\nloading trajectory to numpy array...', end='') 
 
-        if verbose: print ('done.') 
+            # load trajectory 
+            self.trajectory = universe.trajectory.timeseries(order='fac')
 
-        self.start_time = universe.trajectory.time
-        self.dt = universe.trajectory.dt
-        self.n_frames = universe.trajectory.n_frames
+            if verbose: print ('done.') 
 
-        # print information of trajectory
-        if verbose: 
-            print ('\nTrajectory Info:\n' \
-                   '  no. of frames in trajectory data: {}\n' \
-                   '  time of first frame: {:.1f}ps\n'\
-                   '  time of last frame: {:.1f}ps\n'\
-                   '  stepsize: {:.1f}ps\n' \
-                   '  time length: {:.1f}ps\n'\
-                   '  shape of trajectory data array: {}\n'.format(self.n_frames, 
-                                                                   self.start_time, 
-                                                                   universe.trajectory[-1].time,
-                                                                   self.dt, 
-                                                                   universe.trajectory.totaltime,
-                                                                   self.trajectory.shape
-                                                                )
-                  )
+            self.start_time = universe.trajectory.time
+            self.dt = universe.trajectory.dt
+            self.n_frames = universe.trajectory.n_frames
+
+            # print information of trajectory
+            if verbose: 
+                print ('\nTrajectory Info:\n' \
+                       '  no. of frames in trajectory data: {}\n' \
+                       '  time of first frame: {:.1f}ps\n'\
+                       '  time of last frame: {:.1f}ps\n'\
+                       '  stepsize: {:.1f}ps\n' \
+                       '  time length: {:.1f}ps\n'\
+                       '  shape of trajectory data array: {}\n'.format(self.n_frames, 
+                                                                       self.start_time, 
+                                                                       universe.trajectory[-1].time,
+                                                                       self.dt, 
+                                                                       universe.trajectory.totaltime,
+                                                                       self.trajectory.shape
+                                                                    )
+                      )
+
+        else : # otherwise, read trajectory data from text file
+            if traj_filename is None or not os.path.exists(traj_filename):
+                raise FileNotFoundError('trajectory file not found')
+            data_block = np.loadtxt(traj_filename)
+            self.start_time = data_block[0,0]
+            self.dt = data_block[1,0] - self.start_time 
+            self.n_frames = data_block.shape[0]
+            self.trajectory = data_block[:,1:]
 
         if weight_filename :
 
@@ -141,7 +153,7 @@ class WeightedTrajectory:
             selected_idx = (time_weight_vec['weight'] > min_w) & (time_weight_vec['weight'] < max_w)
             weights = time_weight_vec[selected_idx].copy()
 
-            self.trajectory = self.trajectory[selected_idx,:,:]
+            self.trajectory = self.trajectory[selected_idx,...]
 
             weights['weight'] /= weights['weight'].mean()
 

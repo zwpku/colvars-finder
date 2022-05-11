@@ -336,7 +336,7 @@ class EigenFunctionTask(TrainingTask):
 
         self._traj = torch.tensor(traj_obj.trajectory)
 
-        self.tot_dim = self._traj.shape[1] * 3
+        self.tot_dim = traj_obj.trajectory[0,...].size 
 
     def get_reordered_eigenfunctions(self, model, cvec):
         r"""
