@@ -6,7 +6,7 @@
 Documentation of ColVars-Finder
 ===============================
 
-This package implements methods for finding collective variables of molecular systems by training artificial neural networks.
+This package implements methods for finding collective variables of dynamical systems by training artificial neural networks.
 
 .. note::
 
