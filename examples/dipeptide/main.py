@@ -18,8 +18,8 @@ import argparse
 #sys.path.append('../colvarsfinder/core/')
 sys.path.append('../')
 
-from colvarsfinder.core import AutoEncoder, AutoEncoderTask
-from colvarsfinder.core import EigenFunctions, EigenFunctionTask 
+from colvarsfinder.core import AutoEncoderTask, EigenFunctionTask
+from colvarsfinder.nn import AutoEncoder, EigenFunctions 
 from colvarsfinder.utils import WeightedTrajectory, integrate_langevin, calc_weights
 
 # +
@@ -205,7 +205,7 @@ def train(args):
     print ('====================Trajectory Info===================')
 
     # load the trajectory data from DCD file
-    traj_obj = WeightedTrajectory(universe, args.traj_weight_filename, args.cutoff_weight_min, args.cutoff_weight_max)
+    traj_obj = WeightedTrajectory(universe, None, args.traj_weight_filename, args.cutoff_weight_min, args.cutoff_weight_max)
 
     feature_dim = pp_layer.output_dimension()
 
@@ -227,8 +227,7 @@ def train(args):
         if args.verbose: print ('\nAutoencoder: input dim: {}, encoded dim: {}\n'.format(feature_dim, args.k), model)
 
         # define training task
-        train_obj = AutoEncoderTask(traj_obj, pp_layer,  model, args.load_model_filename, args.save_model_every_step, model_path, args.learning_rate, args.batch_size, args.num_epochs, args.test_ratio,
-                args.optimizer_name, args.device, args.verbose)
+        train_obj = AutoEncoderTask(traj_obj, pp_layer,  model,  model_path, args.learning_rate, args.load_model_filename, args.save_model_every_step, args.batch_size, args.num_epochs, args.test_ratio, args.optimizer_name, args.device, args.verbose)
 
     else : # task_type: Eigenfunction
 
@@ -242,9 +241,9 @@ def train(args):
         # the unit of eigenvalues given by Rayleigh quotients is ns^{-1}.
         diag_coeff = torch.ones(tot_dim).to(args.device) * args.diffusion_coeff * 1e7 * args.beta
 
-        train_obj = EigenFunctionTask(traj_obj, pp_layer, 
-                model, args.load_model_filename, args.save_model_every_step, 
+        train_obj = EigenFunctionTask(traj_obj, pp_layer, model,  
                 model_path, args.beta, diag_coeff, args.alpha, args.eig_w, args.learning_rate,
+                args.load_model_filename, args.save_model_every_step,
                 args.sort_eigvals_in_training, args.k, args.batch_size, args.num_epochs, args.test_ratio,
                 args.optimizer_name, args.device, args.verbose)
 
@@ -267,6 +266,10 @@ def train(args):
 
 if __name__ == "__main__":
 
+    tmp = torch.ones(10)
+    b = tmp[2,...]
+    print (tmp, b, b.shape)
+
     if len(sys.argv) != 2 or sys.argv[1] not in ['sampling', 'calc_weights', 'training'] :
         print (f'Usage:\n' \
                 '  1. To generate trajectory data: \n\t./main.py sampling\n' \
@@ -285,7 +288,7 @@ if __name__ == "__main__":
                     args.report_interval, args.report_interval_stdout)
 
         if task == 'calc_weights' :
-            calc_weights(args.sys_temp, args.sampling_temp, args.csv_filename, args.traj_weight_filename, args.energy_col_idx_in_csv)
+            calc_weights(args.csv_filename, args.sampling_temp, args.sys_temp, args.traj_weight_filename, args.energy_col_idx_in_csv)
 
         if task == 'training' :
             train(args)

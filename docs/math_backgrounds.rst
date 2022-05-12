@@ -3,10 +3,9 @@
 Mathematical Backgrounds
 ========================
 
-.. rubric:: Molecular system
+.. rubric:: Dynamical system
 
-Assume that the system has :math:`N` atoms and set :math:`d=3N`.
-Let the invariant distribution of the system at temperature :math:`T` be
+Assume that the dimension of the system is :math:`d`. Let the invariant distribution of the system at temperature :math:`T` be
 :math:`d\mu=\frac{1}{Z} \mathrm{e}^{-\beta V}`, where :math:`\beta=(k_BT)^{-1}`, :math:`V` is the potential of the sytem, and :math:`Z` is the normalizing constant.
 
 .. rubric:: Training data
@@ -23,7 +22,7 @@ for test functions :math:`f`. These data, as well as the weights, can be generat
 
 .. rubric:: Representation of ColVars
 
-In applications, we often expect that the collective variables,
+In molecular applications, we often expect that the collective variables,
 denoted by :math:`\xi:\mathbb{R}^{d}\rightarrow \mathbb{R}^k`, are invariant
 under rotations and translations, or that :math:`\xi` is a function of features (bond distances, angles, etc.)
 To achieve this goal, the training tasks in the module :mod:`colvarsfinder.core` look for :math:`\xi` that is of the form
@@ -37,7 +36,7 @@ the action of certain alignment, a map to certain features, or even the
 identity map, and :math:`g` is the map that we want to learn by training neural networks.
 
 In the training tasks of :mod:`colvarsfinder.core`, :math:`r` is specified in the input parameter
-as the preprocessing layer using the package `MolANN <http:/github.com/zwpku/molann>`__, and :math:`g` corresponds to (part of) the neural network model that is to be trained. 
+as the preprocessing layer which is a PyTorch neural network module, and :math:`g` corresponds to (part of) the neural network model that is to be trained. 
 
 .. _loss_autoencoder:
 

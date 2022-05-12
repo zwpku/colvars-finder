@@ -17,6 +17,5 @@ dependencies:
     - tensorboardx
     - tqdm>=4.62.3
     - pip:
-      - molann>=1.0.0
       - scikit-learn>=1.0.2
 

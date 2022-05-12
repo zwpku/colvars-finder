@@ -27,7 +27,7 @@ Modules
 
    core
    utils
-
+   nn
 
 
 Indices and tables

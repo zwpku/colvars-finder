@@ -5,9 +5,7 @@ r"""Trajectory Data --- :mod:`colvarsfinder.utils`
 :Year: 2022
 :Copyright: GNU Public License v3
 
-This module implements the function :meth:`integrate_langevin` for sampling
-trajectory data, the function :meth:`calc_weights` for calculating weights of
-the states, and the class :class:`WeightedTrajectory` for holding trajectory information.
+This module implements the function :meth:`integrate_langevin` for sampling trajectory data of molecular systems, the function :meth:`calc_weights` for calculating weights of the states, and the class :class:`WeightedTrajectory` for holding trajectory information.
 
 .. rubric:: Typical usage
 
@@ -25,7 +23,7 @@ The weights are calculated in a way such that one can approximate the distributi
 .. math::
    \int_{\mathbb{R}^{d}} f(x) \mu(dx) \approx \frac{\sum_{l=1}^n v_l f(x_l)}{\sum_{l=1}^n v_l}\,,
 
-for test functions :math:`f`, where :math:`d=3N` is the dimension of the system.
+for test functions :math:`f`, where :math:`d` is the dimension of the system.
 
 Using the states and weights generated in the above two steps, one can construct the class :class:`WeightedTrajectory`, which can then be passed on to training task classes in the module :mod:`colvarsfinder.core`.
 
@@ -67,30 +65,30 @@ class WeightedTrajectory:
 
     Args:
         universe (:external+mdanalysis:class:`MDAnalysis.core.universe.Universe`): a MDAnalysis Universe that contains trajectory data
+        traj_filename (str): filename of a text file that contains trajectory data 
         weight_filename (str): filename of a CSV file that contains weights of trajectory 
         min_w (float): minimal value of weights below which the corresponding states will be discarded
         max_w (float): maximal value of weights above which the corresponding states will be discarded
         verbose (bool): print more information if ture
 
+    Note: 
+        #. Trajectory data will be loaded from `universe` if it is not None. Otherwise, trajectory data will be loaded from the text file specified by `traj_filename`.
+        #. When loading trajectory data from text file, each line of the file should contain :math:`d+1` floats, separated by a space. The first float is the current time, and the remaining :math:`d` floats are coordinates of the states.
 
     Note:
         #. Weights are loaded from a CSV file if a filename is provided. The weights are normalized such that its mean value is one. Then, states in the trajectory data whose weights are not within [min_w, max_w] will be discarded, and weights of the remaining states are normalized again to have mean value one.
         #. All weights will be set to one, if weight_filename is None.
 
-
-
     Raises:
-        ValueError: if trajectory information in the CSV file does not match that in the universe.
+
+        FileNotFoundError: if `univsere` is None and `traj_filename` does not point to an existing file.
+        ValueError: if the lengths of trajectory data and weights are not the same.
       
     Attributes:
-        trajectory (3d numpy array): states in the trajectory, shape:
-            :math:`[n, N, 3]`, where :math:`n` =n_frames is the number of states, 
-            and :math:`N` is the number of atoms of the system
-        start_time (float): time of the first state in the trajectory, unit: ps
-        dt (float): timestep of the trajectory data, unit: ps
+        trajectory (numpy array): states in the trajectory. When the trajectory is loaded from a `universe`, its shape is :math:`[n, N, 3]`, where :math:`n` =n_frames is the number of states, and :math:`N` is the number of atoms of the system. When the trajectory is loaded from a text file, its shape is :math:`[n, d]`, where :math:`d` is system's dimension.
+            
         n_frames (int): number of states in the trajectory
         weights (1d numpy array): weights of states
-
 
     """
     def __init__(self, universe=None, traj_filename=None, weight_filename=None, min_w=0.0, max_w=float("inf"), verbose=True):
@@ -105,8 +103,6 @@ class WeightedTrajectory:
 
             if verbose: print ('done.') 
 
-            self.start_time = universe.trajectory.time
-            self.dt = universe.trajectory.dt
             self.n_frames = universe.trajectory.n_frames
 
             # print information of trajectory
@@ -118,9 +114,9 @@ class WeightedTrajectory:
                        '  stepsize: {:.1f}ps\n' \
                        '  time length: {:.1f}ps\n'\
                        '  shape of trajectory data array: {}\n'.format(self.n_frames, 
-                                                                       self.start_time, 
+                                                                       universe.trajectory.time, 
                                                                        universe.trajectory[-1].time,
-                                                                       self.dt, 
+                                                                       universe.trajectory.dt, 
                                                                        universe.trajectory.totaltime,
                                                                        self.trajectory.shape
                                                                     )
@@ -130,45 +126,42 @@ class WeightedTrajectory:
             if traj_filename is None or not os.path.exists(traj_filename):
                 raise FileNotFoundError('trajectory file not found')
             data_block = np.loadtxt(traj_filename)
-            self.start_time = data_block[0,0]
-            self.dt = data_block[1,0] - self.start_time 
             self.n_frames = data_block.shape[0]
             self.trajectory = data_block[:,1:]
 
         if weight_filename :
 
-            time_weight_vec = pd.read_csv(weight_filename)
+            weight_vec = pd.read_csv(weight_filename, usecols=[0], header=None)
+
             # normalize
-            time_weight_vec['weight'] /= time_weight_vec['weight'].mean()
+            weight_vec[0] /= weight_vec[0].mean()
 
             if verbose: 
                 print ('\nloading weights from file: ', weight_filename)
-                print ('\nWeights:\n', time_weight_vec['weight'].describe(percentiles=[0.2, 0.4, 0.6, 0.8]))
+                print ('\nWeights:\n', weight_vec[0].describe(percentiles=[0.2, 0.4, 0.6, 0.8]))
 
-            if abs(self.start_time - time_weight_vec.iloc[0,0]) > 0.01 or self.n_frames != len(time_weight_vec.index) :
-                raise ValueError('Time in weight file does match the trajectory data!\n')
-            else :
-                if verbose: print ('\nCompatibility of weights and trajectory verified.\n')
+            if self.n_frames != len(weight_vec.index) :
+                raise ValueError('length in weight file does match the trajectory data!\n')
 
-            selected_idx = (time_weight_vec['weight'] > min_w) & (time_weight_vec['weight'] < max_w)
-            weights = time_weight_vec[selected_idx].copy()
+            selected_idx = (weight_vec[0] > min_w) & (weight_vec[0] < max_w)
+            weights = weight_vec[selected_idx].copy()
 
             self.trajectory = self.trajectory[selected_idx,...]
 
-            weights['weight'] /= weights['weight'].mean()
+            weights[0] /= weights[0].mean()
 
             if verbose: 
                 print ('\nAfter selecting states whose weights are in [{:.3e}, {:.3e}] and renormalization:\n' \
                        '\nShape of trajectory: {}'.format(min_w, max_w, self.trajectory.shape)
                       )
-                print ('\nWeights:\n', weights['weight'].describe(percentiles=[0.2, 0.4, 0.6, 0.8]))
+                print ('\nWeights:\n', weights[0].describe(percentiles=[0.2, 0.4, 0.6, 0.8]))
 
-            self.weights = weights['weight'].to_numpy()
+            self.weights = weights[0].to_numpy()
         else :
             self.weights = np.ones(self.n_frames)
 
 # Generate MD trajectory data using OpenMM 
-def integrate_langevin(pdb_filename, n_steps, sampling_temp, sampling_output_path, pre_steps=0, step_size=1.0 * unit.femtoseconds,
+def integrate_langevin(pdb_filename, n_steps, sampling_output_path, sampling_temp=300.0 * unit.kelvin,  pre_steps=0, step_size=1.0 * unit.femtoseconds,
         frictionCoeff=1.0 / unit.picosecond,  traj_dcd_filename='traj.dcd', csv_filename='output.csv', report_interval=100,
         report_interval_stdout=100, forcefield=None, plumed_script=None):
     r"""Generate trajectory data by integrating Langevin dynamics using OpenMM.
@@ -176,9 +169,9 @@ def integrate_langevin(pdb_filename, n_steps, sampling_temp, sampling_output_pat
     Args:
         pdb_filename (str): filename of PDB file
         n_steps (int): total number of steps to integrate
+        sampling_output_path (str): directory to save results
         sampling_temp (:external+openmm:class:`openmm.unit.quantity.Quantity`): temperature
             used to sample states, unit: kelvin
-        sampling_output_path (str): directory to save results
         pre_steps (int): number of warm-up steps to run before integrating the system for n_steps
         step_size (:external+openmm:class:`openmm.unit.quantity.Quantity`): step-size to integrate Langevin dynamics, unit: fs
         frictionCoeff (:external+openmm:class:`openmm.unit.quantity.Quantity`): friction
@@ -270,14 +263,13 @@ def integrate_langevin(pdb_filename, n_steps, sampling_temp, sampling_output_pat
 
     del simulation
 
-def calc_weights(sys_temp, sampling_temp, csv_filename, traj_weight_filename, energy_col_idx=1):
+def calc_weights(csv_filename, sampling_temp, sys_temp=300.0 * unit.kelvin, traj_weight_filename='weights.txt', energy_col_idx=1):
     r"""Calculate weights of the trajectory data.
 
     Args:
-        sys_temp (:external+openmm:class:`openmm.unit.quantity.Quantity`): system's true temperature, unit: kelvin
-        sampling_temp (:external+openmm:class:`openmm.unit.quantity.Quantity`): temperature
-            used to sample states, unit: kelvin
         csv_filename (str): filename of a CSV file generated by :meth:`integrate_langevin`
+        sampling_temp (:external+openmm:class:`openmm.unit.quantity.Quantity`): temperature used to sample states, unit: kelvin
+        sys_temp (:external+openmm:class:`openmm.unit.quantity.Quantity`): system's true temperature, unit: kelvin
         traj_weight_filename (str): filename to output the weights of trajectory
         energy_col_idx (int): the index of the column of the CSV file, based on which the weights will be calculated.
 
@@ -293,21 +285,20 @@ def calc_weights(sys_temp, sampling_temp, csv_filename, traj_weight_filename, en
 
     Example:
 
-        Below is an example of the CSV file generated by :meth:`calc_weights`: 
+        Below is an example of the file generated by :meth:`calc_weights`: 
 
     .. code-block:: text
-        :caption: weights.csv
+        :caption: weights.txt
 
-        Time (ps),weight
-        1.9999999999998903,0.8979287896010564
-        2.9999999999997806,0.5424829921777613
-        3.9999999999996714,0.02360908666276056
-        5.000000000000004,0.03124009081426178
-        6.000000000000338,0.4012103169413903
-        7.000000000000672,0.617590719346622
-        8.000000000001005,0.031154032337133607
-        9.000000000000451,0.299688734996611
-        9.999999999999895,0.03230412279837258
+        0.8979287896010564
+        0.5424829921777613
+        0.02360908666276056
+        0.03124009081426178
+        0.4012103169413903
+        0.617590719346622
+        0.031154032337133607
+        0.299688734996611
+        0.03230412279837258
         ...
 
     """
@@ -337,12 +328,8 @@ def calc_weights(sys_temp, sampling_temp, csv_filename, traj_weight_filename, en
     nonnormalized_weights = [math.exp(-(sys_beta - sampling_beta) * (energy - mean_energy) * unit.kilojoule_per_mole) for energy in energy_list] 
     weights = pd.DataFrame(nonnormalized_weights / np.mean(nonnormalized_weights), columns=['weight'] )
 
-    # insert time info
-    time_col_idx = 0
-    time_col_name=vec.columns[time_col_idx]
-    weights.insert(0, time_col_name, vec[time_col_name])
     print ('\nWeight:\n', weights.head(8), '\n\nSummary of weights:\n', weights.describe())
 
-    weights.to_csv(traj_weight_filename, index=False)
+    weights.to_csv(traj_weight_filename, header=False, index=False)
     print (f'weights saved to: {traj_weight_filename}')
 
