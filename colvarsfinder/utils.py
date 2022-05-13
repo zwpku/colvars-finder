@@ -5,7 +5,7 @@ r"""Trajectory Data --- :mod:`colvarsfinder.utils`
 :Year: 2022
 :Copyright: GNU Public License v3
 
-This module implements the function :meth:`integrate_langevin` for sampling trajectory data of molecular systems, the function :meth:`calc_weights` for calculating weights of the states, and the class :class:`WeightedTrajectory` for holding trajectory information.
+This module implements the function :meth:`integrate_md_langevin` and :meth:`integrate_sde_overdamped` for sampling trajectory data of (molecular) dynamical systems, the function :meth:`calc_weights` for calculating weights of the states, and the class :class:`WeightedTrajectory` for holding trajectory information.
 
 .. rubric:: Typical usage
 
@@ -14,9 +14,10 @@ Assume that the invariant distribution of the system is :math:`\mu` at temperatu
 Direct simulation becomes inefficient, when there is metastability in system's dynamics.
 To mitigate the difficulty due to metastability, one can use this module in the following two steps.
 
-    #. Run :meth:`integrate_langevin` to sample states :math:`(x_l)_{1\le l \le n}` of the (biased) system at a slightly high temperature :math:`T_{sim} > T`; 
+    #. Run :meth:`integrate_md_langevin` or :meth:`integrate_sde_overdamped` to sample states :math:`(x_l)_{1\le l \le n}` of the (biased) system at a slightly high temperature :math:`T_{sim} > T`; 
 
     #. Use :meth:`calc_weights` to generate a CSV file that contains the weights :math:`(w_l)_{1\le l \le n}` of the sampled states. 
+
 
 The weights are calculated in a way such that one can approximate the distribution :math:`\mu` using the biased data :math:`(x_l)_{1\le l \le n}` by
 
@@ -35,7 +36,9 @@ Classes
 Functions
 ---------
 
-.. autofunction:: integrate_langevin
+.. autofunction:: integrate_md_langevin
+
+.. autofunction:: integrate_sde_overdamped
 
 .. autofunction:: calc_weights
 
@@ -51,10 +54,7 @@ import os, sys
 import warnings
 from sys import stdout
 import pandas as pd
-import MDAnalysis as mda
-import torch
 
-# import openmm
 from openmm import *
 from openmm.app import *
 
@@ -161,7 +161,7 @@ class WeightedTrajectory:
             self.weights = np.ones(self.n_frames)
 
 # Generate MD trajectory data using OpenMM 
-def integrate_langevin(pdb_filename, n_steps, sampling_output_path, sampling_temp=300.0 * unit.kelvin,  pre_steps=0, step_size=1.0 * unit.femtoseconds,
+def integrate_md_langevin(pdb_filename, n_steps, sampling_output_path, sampling_temp=300.0 * unit.kelvin,  pre_steps=0, step_size=1.0 * unit.femtoseconds,
         frictionCoeff=1.0 / unit.picosecond,  traj_dcd_filename='traj.dcd', csv_filename='output.csv', report_interval=100,
         report_interval_stdout=100, forcefield=None, plumed_script=None):
     r"""Generate trajectory data by integrating Langevin dynamics using OpenMM.
@@ -263,11 +263,108 @@ def integrate_langevin(pdb_filename, n_steps, sampling_output_path, sampling_tem
 
     del simulation
 
+def integrate_sde_overdamped(pot_obj, n_steps, sampling_output_path, sampling_temp=300.0 * unit.kelvin, pre_steps=0, step_size=0.01,
+        traj_txt_filename='traj.txt', csv_filename='output.csv', report_interval=100, report_interval_stdout=100):
+    r"""Generate trajectory data by integrating overdamped Langevin dynamics using Euler-Maruyama scheme.
+
+    Args:
+        pot_obj: class that specifies potential :math:`V`
+        n_steps (int): total number of steps to integrate
+        sampling_output_path (str): directory to save results
+        sampling_temp (:external+openmm:class:`openmm.unit.quantity.Quantity`): temperature used to sample states, unit: kelvin
+        pre_steps (int): number of warm-up steps to run before integrating the system for n_steps
+        step_size (float): step-size to integrate SDE, unit: dimensionless
+        traj_txt_filename (str): filename of the text file to save trajectory 
+        csv_filename (str): filename of the CSV file to store statistics
+        report_interval (int): how often to write trajectory to text file and to write statistics to CSV file
+        report_interval_stdout (int): how often to print to stdout
+
+    Note: 
+       #. `pot_obj` is an object of a class which has attribute `dim` and memeber functions `V` and `gradV`.
+       #. The first line of the CSV file contains titles of the output statistics. Each of the following lines records the time and energy of the system, separated by a comma.  An example of the output CSV file is given below.
+
+    Example:
+        Below is an example of `pot_obj`.
+
+    .. code-block:: python
+
+        class mypot(object):
+            def __init__(self):
+                self.dim = 2
+
+            def V(self, x):
+                return 0.5 * x[0]**2 + 2.0 * x[1]**2
+
+            def gradV(self, x): 
+                return np.array([x[0], 4.0 * x[1]])
+
+        pot_obj = mypot()
+
+    Example:
+        Below is an example of the CSV file containing statistics recorded during simulation.
+
+    .. code-block:: text
+        :caption: output.csv
+
+        Time,Energy
+        0.0,5.423187853452168
+        1.0,6.17342106224266
+        2.0,1.1311978694547915
+        3.0,0.8239473412429524
+        4.0,0.02854608581728689
+        5.0,1.327977569243032
+        6.0,5.452589054795339
+        7.0,3.61438132406788
+        8.0,2.297568687904894
+        ...
+    """
+
+    dim = pot_obj.dim
+    # beta is dimensionless
+    sampling_beta = 1.0 / (sampling_temp * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA) * unit.kilojoule_per_mole
+
+    print (f'\nSampling temperature: {sampling_temp}')
+    print (f'Directory to save trajectory ouptuts: {sampling_output_path}')
+    print (f'sampling beta={sampling_beta:.3f}, dt={step_size:.3f}\n')
+
+    X0 = np.random.randn(dim)
+
+    print (f'First, burning, total number of steps = {pre_steps}')
+    for i in range(pre_steps):
+        xi = np.random.randn(dim)
+        X0 = X0 - pot_obj.gradV(X0) * step_size + np.sqrt(2 * step_size / sampling_beta) * xi
+
+    # add path to filenames
+    traj_txt_filename = os.path.join(sampling_output_path, traj_txt_filename)
+
+    print (f'Next, run {n_steps} steps')
+
+    csv_data_list = []
+
+    with open(traj_txt_filename, 'w+') as f:
+        for i in range(n_steps):
+            xi = np.random.randn(dim)
+            X0 = X0 - pot_obj.gradV(X0) * step_size + np.sqrt(2 * step_size / sampling_beta) * xi
+
+            if i % report_interval == 0 :
+                str_data = f"{i * step_size:.3f} " + ' '.join([f'{x:.6f}' for x in X0]) + '\n'
+                f.write(str_data)
+                energy = pot_obj.V(X0)
+                csv_data_list.append([i * step_size, energy])
+
+            if i % report_interval_stdout == 0:
+                energy = pot_obj.V(X0)
+                print (f'step={i}, time={i * step_size:.3f}, energy={energy:.3f}', flush=True)
+
+    csv_data = pd.DataFrame(csv_data_list, columns=['Time', 'Energy'])
+    csv_filename=os.path.join(sampling_output_path, csv_filename)
+    csv_data.to_csv(csv_filename, index=False)
+
 def calc_weights(csv_filename, sampling_temp, sys_temp=300.0 * unit.kelvin, traj_weight_filename='weights.txt', energy_col_idx=1):
     r"""Calculate weights of the trajectory data.
 
     Args:
-        csv_filename (str): filename of a CSV file generated by :meth:`integrate_langevin`
+        csv_filename (str): filename of a CSV file generated by :meth:`integrate_md_langevin`
         sampling_temp (:external+openmm:class:`openmm.unit.quantity.Quantity`): temperature used to sample states, unit: kelvin
         sys_temp (:external+openmm:class:`openmm.unit.quantity.Quantity`): system's true temperature, unit: kelvin
         traj_weight_filename (str): filename to output the weights of trajectory
@@ -317,19 +414,23 @@ def calc_weights(csv_filename, sampling_temp, sys_temp=300.0 * unit.kelvin, traj
     energy_col_name=vec.columns[energy_col_idx]
     print ('\nUse {:d}th column to reweight, name: {}'.format(energy_col_idx, energy_col_name) )
 
-    sampling_beta = 1.0 / (sampling_temp * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA)
-    sys_beta = 1.0 / (sys_temp * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA)
+    # beta's are dimensionless
+    sampling_beta = 1.0 / (sampling_temp * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA) * unit.kilojoule_per_mole
+    sys_beta = 1.0 / (sys_temp * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA) * unit.kilojoule_per_mole
+
     energy_list = vec[energy_col_name]
     mean_energy = energy_list.mean()
 
     print (f'\nsampling beta={sampling_beta}, system beta={sys_beta}')
 
     # compute weights from potential energy
-    nonnormalized_weights = [math.exp(-(sys_beta - sampling_beta) * (energy - mean_energy) * unit.kilojoule_per_mole) for energy in energy_list] 
+    nonnormalized_weights = [math.exp(-(sys_beta - sampling_beta) * (energy - mean_energy)) for energy in energy_list] 
     weights = pd.DataFrame(nonnormalized_weights / np.mean(nonnormalized_weights), columns=['weight'] )
 
     print ('\nWeight:\n', weights.head(8), '\n\nSummary of weights:\n', weights.describe())
 
     weights.to_csv(traj_weight_filename, header=False, index=False)
     print (f'weights saved to: {traj_weight_filename}')
+
+
 
