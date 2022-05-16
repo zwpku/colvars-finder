@@ -20,7 +20,7 @@ sys.path.append('../')
 
 from colvarsfinder.core import AutoEncoderTask, EigenFunctionTask
 from colvarsfinder.nn import AutoEncoder, EigenFunctions 
-from colvarsfinder.utils import WeightedTrajectory, integrate_langevin, calc_weights
+from colvarsfinder.utils import WeightedTrajectory, integrate_md_langevin, calc_weights
 
 # +
 def set_all_seeds(seed):
@@ -118,6 +118,7 @@ class Params(object):
             self.activation = getattr(torch.nn, self.activation_name) 
 
             self.align_selector = config['Training'].get('align_mda_selector')
+            self.input_selector = config['Training'].get('input_mda_selector')
             self.feature_file = config['Training'].get('feature_file')
             self.seed = config['Training'].getint('seed')
             self.verbose = config['Training'].getboolean('verbose')
@@ -175,7 +176,8 @@ def train(args):
     feature_list = feature_reader.read()
     
     # define the map from positions to features 
-    feature_mapper = ann.FeatureLayer(feature_list, use_angle_value=False)
+    input_ag = universe.select_atoms(args.input_selector)
+    feature_mapper = ann.FeatureLayer(feature_list, input_ag, use_angle_value=False)
 
     print ('\nFeatures in preprocessing layer:')
     # display information of features used 
@@ -190,7 +192,7 @@ def train(args):
         align_atom_group = universe.select_atoms(args.align_selector)
         print ('\nAdd alignment to preprocessing layer.\naligning by atoms:')
         print (atoms_info.loc[atoms_info['id'].isin(align_atom_group.ids)][['id','name', 'type']], flush=True)
-        align = ann.AlignmentLayer(align_atom_group)
+        align = ann.AlignmentLayer(align_atom_group, input_ag)
         # align.show_info()
     else :
         print ('No aligment used.')
@@ -281,7 +283,7 @@ if __name__ == "__main__":
         if task == 'sampling' :
             if not os.path.exists(args.sampling_output_path):
                 os.makedirs(args.sampling_output_path)
-            integrate_langevin(args.pdb_filename, args.n_steps,
+            integrate_md_langevin(args.pdb_filename, args.n_steps,
                     args.sampling_temp, args.sampling_output_path, args.pre_steps,
                     args.step_size, args.frictionCoeff,
                     args.traj_dcd_filename, args.csv_filename,
