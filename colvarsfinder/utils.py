@@ -65,6 +65,7 @@ class WeightedTrajectory:
 
     Args:
         universe (:external+mdanalysis:class:`MDAnalysis.core.universe.Universe`): a MDAnalysis Universe that contains trajectory data
+        input_ag (:external+mdanalysis:class:`MDAnalysis.core.groups.AtomGroup`): atom group used for input. All atoms are selected, if it is none. This argument is relevent only when *universe* is not None.
         traj_filename (str): filename of a text file that contains trajectory data 
         weight_filename (str): filename of a CSV file that contains weights of trajectory 
         min_w (float): minimal value of weights below which the corresponding states will be discarded
@@ -91,15 +92,19 @@ class WeightedTrajectory:
         weights (1d numpy array): weights of states
 
     """
-    def __init__(self, universe=None, traj_filename=None, weight_filename=None, min_w=0.0, max_w=float("inf"), verbose=True):
-
+    def __init__(self, universe=None, input_ag=None, traj_filename=None, weight_filename=None, min_w=0.0, max_w=float("inf"), verbose=True):
         
         if universe is not None :
 
             if verbose: print ('\nloading trajectory to numpy array...', end='') 
 
+            if input_ag is None :
+                input_atom_indices = univser.atoms.ids - 1
+            else :
+                input_atom_indices = input_ag.ids - 1
+
             # load trajectory 
-            self.trajectory = universe.trajectory.timeseries(order='fac')
+            self.trajectory = universe.trajectory.timeseries(order='fac')[:,input_atom_indices,:]
 
             if verbose: print ('done.') 
 
@@ -161,13 +166,14 @@ class WeightedTrajectory:
             self.weights = np.ones(self.n_frames)
 
 # Generate MD trajectory data using OpenMM 
-def integrate_md_langevin(pdb_filename, n_steps, sampling_output_path, sampling_temp=300.0 * unit.kelvin,  pre_steps=0, step_size=1.0 * unit.femtoseconds,
-        frictionCoeff=1.0 / unit.picosecond,  traj_dcd_filename='traj.dcd', csv_filename='output.csv', report_interval=100,
-        report_interval_stdout=100, forcefield=None, plumed_script=None):
+def integrate_md_langevin(pdb_filename, psf_filename, charmm_param_filename, n_steps, sampling_output_path, sampling_temp=300.0 * unit.kelvin,  pre_steps=0, step_size=1.0 * unit.femtoseconds, frictionCoeff=1.0 / unit.picosecond,  traj_dcd_filename='traj.dcd', csv_filename='output.csv', report_interval=100,
+        report_interval_stdout=100, plumed_script=None):
     r"""Generate trajectory data by integrating Langevin dynamics using OpenMM.
 
     Args:
         pdb_filename (str): filename of PDB file
+        psf_filename (str): filename of PSF file
+        charmm_param_filename (str): filename of file for CHARMM parameters
         n_steps (int): total number of steps to integrate
         sampling_output_path (str): directory to save results
         sampling_temp (:external+openmm:class:`openmm.unit.quantity.Quantity`): temperature
@@ -180,13 +186,11 @@ def integrate_md_langevin(pdb_filename, n_steps, sampling_output_path, sampling_
         csv_filename (str): filename of the CSV file to store statistics
         report_interval (int): how often to write trajectory to DCD file and to write statistics to CSV file
         report_interval_stdout (int): how often to print to stdout
-        forcefield (:external+openmm:class:`openmm.app.forcefield.ForceField`): OpenMM force field used to calculate force
         plumed_script (str): script of PLUMED commands 
 
     This class encloses commands to simulate a Langevin dynamics using `OpenMM <https://openmm.org>`__ package.
 
     Note: 
-       #. OpenMM ForceField('amber14-all.xml') will be used, if forcefield=None
        #. The first line of the CSV file contains titles of the output statistics. Each of the following lines records the time, potential energy, total energy, and temperature of the system, separated by a comma.  An example of the output CSV file is given below.
        #. Optionally, by taking advantage of the `OpenMM PLUMED plugin <https://www.github.com/openmm/openmm-plumed>`__, a `PLUMED <https://www.plumed.org>`__ script can be provided, either to record statistics or even to add biasing forces.
 
@@ -218,11 +222,10 @@ def integrate_md_langevin(pdb_filename, n_steps, sampling_output_path, sampling_
 
     # prepare before simulation
     pdb = PDBFile(pdb_filename)
+    psf = CharmmPsfFile(psf_filename)
+    params = CharmmParameterSet(charmm_param_filename)
 
-    if forcefield is None :
-        forcefield = ForceField('amber14-all.xml')
-
-    system = forcefield.createSystem(pdb.topology, nonbondedCutoff=2*unit.nanometer, constraints=HBonds)
+    system = psf.createSystem(params, nonbondedCutoff=2*unit.nanometer, constraints=HBonds)
 
     if plumed_script is not None :
         from openmmplumed import PlumedForce

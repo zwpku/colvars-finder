@@ -207,7 +207,7 @@ def train(args):
     print ('====================Trajectory Info===================')
 
     # load the trajectory data from DCD file
-    traj_obj = WeightedTrajectory(universe, None, args.traj_weight_filename, args.cutoff_weight_min, args.cutoff_weight_max)
+    traj_obj = WeightedTrajectory(universe, input_ag, None, args.traj_weight_filename, args.cutoff_weight_min, args.cutoff_weight_max)
 
     feature_dim = pp_layer.output_dimension()
 
@@ -238,7 +238,7 @@ def train(args):
 
         if args.verbose: print ('\nEigenfunctions:\n', model, flush=True)
 
-        tot_dim = universe.atoms.n_atoms * 3
+        tot_dim = input_ag.n_atoms * 3
         # diagnoal matrix 
         # the unit of eigenvalues given by Rayleigh quotients is ns^{-1}.
         diag_coeff = torch.ones(tot_dim).to(args.device) * args.diffusion_coeff * 1e7 * args.beta
@@ -283,11 +283,8 @@ if __name__ == "__main__":
         if task == 'sampling' :
             if not os.path.exists(args.sampling_output_path):
                 os.makedirs(args.sampling_output_path)
-            integrate_md_langevin(args.pdb_filename, args.n_steps,
-                    args.sampling_temp, args.sampling_output_path, args.pre_steps,
-                    args.step_size, args.frictionCoeff,
-                    args.traj_dcd_filename, args.csv_filename,
-                    args.report_interval, args.report_interval_stdout)
+
+            integrate_md_langevin(args.pdb_filename, args.psf_filename, args.charmm_param_filename, args.n_steps, args.sampling_output_path, args.sampling_temp,  args.pre_steps, args.step_size, args.frictionCoeff, args.traj_dcd_filename, args.csv_filename, args.report_interval, args.report_interval_stdout)
 
         if task == 'calc_weights' :
             calc_weights(args.csv_filename, args.sampling_temp, args.sys_temp, args.traj_weight_filename, args.energy_col_idx_in_csv)
