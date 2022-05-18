@@ -38,6 +38,8 @@ class Params(object):
 
         if task == 'sampling':
             self.pdb_filename = config['System']['pdb_filename']
+            self.psf_filename = config['System']['psf_filename']
+            self.charmm_param_filename = config['System']['charmm_param_filename']
             self.n_steps = config['Sampling'].getint('n_steps')
             self.pre_steps = config['Sampling'].getint('pre_steps')
             self.step_size = config['Sampling'].getfloat('step_size') * unit.femtoseconds
@@ -268,10 +270,6 @@ def train(args):
 
 if __name__ == "__main__":
 
-    tmp = torch.ones(10)
-    b = tmp[2,...]
-    print (tmp, b, b.shape)
-
     if len(sys.argv) != 2 or sys.argv[1] not in ['sampling', 'calc_weights', 'training'] :
         print (f'Usage:\n' \
                 '  1. To generate trajectory data: \n\t./main.py sampling\n' \
@@ -283,7 +281,6 @@ if __name__ == "__main__":
         if task == 'sampling' :
             if not os.path.exists(args.sampling_output_path):
                 os.makedirs(args.sampling_output_path)
-
             integrate_md_langevin(args.pdb_filename, args.psf_filename, args.charmm_param_filename, args.n_steps, args.sampling_output_path, args.sampling_temp,  args.pre_steps, args.step_size, args.frictionCoeff, args.traj_dcd_filename, args.csv_filename, args.report_interval, args.report_interval_stdout)
 
         if task == 'calc_weights' :

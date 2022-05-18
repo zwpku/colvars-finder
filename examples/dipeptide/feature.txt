@@ -16,15 +16,11 @@ p1, position, type C or type O or type N
 #p1, position, resid 2 
 [End]
 [Histogram]
-d1, dihedral, bynum 5, bynum 7, bynum 9, bynum 15 
-d2, dihedral, bynum 7, bynum 9, bynum 15, bynum 17
-b1, bond, bynum 2 5
-b2, bond, bynum 5 6
-a1, angle, bynum 20, bynum 19, bynum 21
-a2, angle, bynum 16, bynum 15, bynum 17
+d1, dihedral, bynum 13, bynum 15, bynum 17, bynum 1 
+d2, dihedral, bynum 3, bynum 1, bynum 17, bynum 15
 [End]
 [Output]
-d1, dihedral, bynum 5 7 9 15 
-d2, dihedral, bynum 7 9 15 17
+d1, dihedral, bynum 13, bynum 15, bynum 17, bynum 1 
+d2, dihedral, bynum 3, bynum 1, bynum 17, bynum 15
 [End]
 
