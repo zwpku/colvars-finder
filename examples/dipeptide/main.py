@@ -12,11 +12,12 @@ import time
 import MDAnalysis as mda
 import pandas as pd
 import configparser
-from openmm import unit
+from openmm import unit, LangevinIntegrator
+from openmm.app import *
 import argparse
 
 #sys.path.append('../colvarsfinder/core/')
-sys.path.append('../')
+sys.path.append('../../')
 
 from colvarsfinder.core import AutoEncoderTask, EigenFunctionTask
 from colvarsfinder.nn import AutoEncoder, EigenFunctions 
@@ -43,7 +44,10 @@ class Params(object):
             self.n_steps = config['Sampling'].getint('n_steps')
             self.pre_steps = config['Sampling'].getint('pre_steps')
             self.step_size = config['Sampling'].getfloat('step_size') * unit.femtoseconds
+
+            # friction coefficient in Langevin dynamics, unit: :math:`(\text{ps})^{-1}`
             self.frictionCoeff = config['Sampling'].getfloat('friction') / unit.picosecond
+            # temperature used to sample states, unit: kelvin
             self.sampling_temp = config['Sampling'].getfloat('sampling_temperature') * unit.kelvin
             self.sampling_output_path = config['Sampling'].get('sampling_output_path')
 
@@ -281,11 +285,30 @@ if __name__ == "__main__":
         if task == 'sampling' :
             if not os.path.exists(args.sampling_output_path):
                 os.makedirs(args.sampling_output_path)
-            integrate_md_langevin(args.pdb_filename, args.psf_filename, args.charmm_param_filename, args.n_steps, args.sampling_output_path, args.sampling_temp,  args.pre_steps, args.step_size, args.frictionCoeff, args.traj_dcd_filename, args.csv_filename, args.report_interval, args.report_interval_stdout)
+
+            """
+            psf = CharmmPsfFile(psf_filename)
+            params = CharmmParameterSet(charmm_param_filename)
+            system = psf.createSystem(params, nonbondedCutoff=2*unit.nanometer, constraints=HBonds)
+            """
+
+            pdb = PDBFile(args.pdb_filename)
+            forcefield = ForceField('amber14-all.xml')
+            system = forcefield.createSystem(pdb.topology, nonbondedCutoff=1*unit.nanometer, constraints=HBonds)
+
+            print (f'\nSampling temperature: {args.sampling_temp}')
+            integrator = LangevinIntegrator(args.sampling_temp, args.frictionCoeff, args.step_size)
+
+            integrate_md_langevin(pdb, system, integrator, args.n_steps, args.sampling_output_path, args.pre_steps, args.traj_dcd_filename, args.csv_filename, args.report_interval, args.report_interval_stdout)
 
         if task == 'calc_weights' :
-            calc_weights(args.csv_filename, args.sampling_temp, args.sys_temp, args.traj_weight_filename, args.energy_col_idx_in_csv)
+            print (f'\nSampling temperature: {args.sampling_temp}, system temperature: {args.sys_temp}')
+            sampling_beta = 1.0 / (args.sampling_temp * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA) * unit.kilojoule_per_mole
+            sys_beta = 1.0 / (args.sys_temp * unit.BOLTZMANN_CONSTANT_kB * unit.AVOGADRO_CONSTANT_NA) * unit.kilojoule_per_mole
+            calc_weights(args.csv_filename, sampling_beta, sys_beta, args.traj_weight_filename, args.energy_col_idx_in_csv)
 
         if task == 'training' :
             train(args)
+
+
 
