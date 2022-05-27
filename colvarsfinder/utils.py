@@ -259,7 +259,7 @@ def integrate_sde_overdamped(pot_obj, n_steps, sampling_output_path, X0=None, pr
         pot_obj: class that specifies potential :math:`V`
         n_steps (int): total number of steps to integrate
         sampling_output_path (str): directory to save results
-        X0 (numpy array of int): initial position
+        X0 (1d numpy array of float): initial position. Random initial position will be used if it is None.
         pre_steps (int): number of warm-up steps to run before integrating the system for n_steps
         step_size (float): step-size to integrate SDE, unit: dimensionless
         traj_txt_filename (str): filename of the text file to save trajectory 
