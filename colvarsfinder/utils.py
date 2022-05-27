@@ -251,7 +251,7 @@ def integrate_md_langevin(pdb, system, integrator, n_steps, sampling_output_path
 
     del simulation
 
-def integrate_sde_overdamped(pot_obj, n_steps, sampling_output_path, pre_steps=0, step_size=0.01,
+def integrate_sde_overdamped(pot_obj, n_steps, sampling_output_path, X0=None, pre_steps=0, step_size=0.01,
         traj_txt_filename='traj.txt', csv_filename='output.csv', report_interval=100, report_interval_stdout=100):
     r"""Generate trajectory data by integrating overdamped Langevin dynamics using Euler-Maruyama scheme.
 
@@ -259,6 +259,7 @@ def integrate_sde_overdamped(pot_obj, n_steps, sampling_output_path, pre_steps=0
         pot_obj: class that specifies potential :math:`V`
         n_steps (int): total number of steps to integrate
         sampling_output_path (str): directory to save results
+        X0 (numpy array of int): initial position
         pre_steps (int): number of warm-up steps to run before integrating the system for n_steps
         step_size (float): step-size to integrate SDE, unit: dimensionless
         traj_txt_filename (str): filename of the text file to save trajectory 
@@ -311,11 +312,11 @@ def integrate_sde_overdamped(pot_obj, n_steps, sampling_output_path, pre_steps=0
     # beta is dimensionless
     sampling_beta = pot_obj.beta 
 
-    print (f'\nSampling temperature: {sampling_temp}')
     print (f'Directory to save trajectory ouptuts: {sampling_output_path}')
     print (f'sampling beta={sampling_beta:.3f}, dt={step_size:.3f}\n')
 
-    X0 = np.random.randn(dim)
+    if X0 is None :
+        X0 = np.random.randn(dim)
 
     print (f'First, burning, total number of steps = {pre_steps}')
     for i in range(pre_steps):
