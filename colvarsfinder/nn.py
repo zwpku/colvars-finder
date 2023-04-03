@@ -102,6 +102,53 @@ class AutoEncoder(torch.nn.Module):
         """
         return self.decoder(self.encoder(inp))
 
+class DynRegAE(torch.nn.Module):
+    def __init__(self, e_layer_dims, d_layer_dims, reg_layer_dims, K, activation=torch.nn.Tanh()):
+        super(DynRegAE, self).__init__()
+        self.encoder = create_sequential_nn(e_layer_dims, activation)
+        self.decoder = create_sequential_nn(d_layer_dims, activation)
+        self.num_reg = K
+        self._num_encoder_layer = len(e_layer_dims) - 1
+
+        self.reg = torch.nn.ModuleList([create_sequential_nn(reg_layer_dims, activation) for idx in range(K)])
+
+    def get_params_of_cv(self, cv_idx):
+        r"""
+        Args:
+            cv_idx (int): index of collective variables
+        Return:
+            list of pairs of name and parameters of all linear layers.
+        """
+        param_vec = []
+        for name, param in self.encoder.named_parameters():
+            layer_idx = int(re.search(r'\d+', name).group())
+            if layer_idx < self._num_encoder_layer:
+                param_vec.append([name, param])
+            else :
+                param_vec.append([name, param[cv_idx:(cv_idx+1), ...]])
+        return param_vec
+
+    def forward_ae(self, inp):
+        return self.decoder(self.encoder(inp))
+
+    def forward_reg(self, inp):
+        encoded = self.encoder(inp)
+        return torch.cat([nn(encoded) for nn in self.reg], dim=1)
+
+    def forward(self, inp):
+        encoded = self.encoder(inp)
+        return torch.cat((self.decoder(encoded), [nn(encoded) for nn in self.reg]), dim=1)
+
+class RegModel(torch.nn.Module):
+    def __init__(self, reg_ae):
+        super(RegModel, self).__init__()
+        self.encoder = reg_ae.encoder
+        self.reg = reg_ae.reg
+
+    def forward(self, inp):
+        encoded = self.encoder(inp)
+        return torch.cat([nn(encoded) for nn in self.reg], dim=1)
+
 # eigenfunction class
 class EigenFunctions(torch.nn.Module):
     r"""Feedforward neural network.

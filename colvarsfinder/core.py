@@ -247,10 +247,11 @@ class EigenFunctionTask(TrainingTask):
                         pp_layer, 
                         model,
                         model_path, 
-                        beta, 
-                        diag_coeff,
                         alpha,
                         eig_weights, 
+                        diag_coeff=None,
+                        beta=1.0, 
+                        lag_idx=0,
                         learning_rate=0.01, 
                         load_model_filename=None,
                         save_model_every_step=10, 
@@ -267,11 +268,10 @@ class EigenFunctionTask(TrainingTask):
 
         self.model = model
 
-        self._beta = beta
         self._alpha = alpha
         self._sort_eigvals_in_training = sort_eigvals_in_training
         self._eig_w = eig_weights
-        self._diag_coeff = diag_coeff
+        self.lag_idx = lag_idx
 
         # list of (i,j) pairs in the penalty term
         self._ij_list = list(itertools.combinations(range(self.k), 2))
@@ -288,7 +288,13 @@ class EigenFunctionTask(TrainingTask):
 
         self.tot_dim = traj_obj.trajectory[0,...].size 
 
-        assert diag_coeff.dim() == 1 and diag_coeff.size(dim=0) == self.tot_dim, f'diag_coeff should be a 1d tensor of length {self.tot_dim}, current shape: {diag_coeff}'
+        if self.lag_idx == 0 :
+            self._beta = beta
+            if diag_coeff is not None :
+                assert diag_coeff.dim() == 1 and diag_coeff.size(dim=0) == self.tot_dim, f'diag_coeff should be a 1d tensor of length {self.tot_dim}, current shape: {diag_coeff}'
+                self._diag_coeff = diag_coeff
+            else :
+                self._diag_coeff = torch.ones(self.tot_dim)
 
     def get_reordered_eigenfunctions(self, model, cvec):
         r"""
@@ -316,16 +322,10 @@ class EigenFunctionTask(TrainingTask):
         reordered_model = self.get_reordered_eigenfunctions(self.model, self._cvec)
         return torch.nn.Sequential(self.preprocessing_layer, reordered_model)
 
-    def loss_func(self, X, weight):
+    def loss_func(self, X, X_lagged, weight):
+
         # Evaluate function value on data
         y = self.model(self.preprocessing_layer(X))
-
-        """
-          Compute gradients with respect to coordinates
-          The flag create_graph=True is needed, because later we need to compute
-          gradients w.r.t. parameters; Please refer to the torch.autograd.grad function for details.
-        """
-        y_grad_vec = torch.stack([torch.autograd.grad(outputs=y[:,idx].sum(), inputs=X, retain_graph=True, create_graph=True)[0].reshape((-1,self.tot_dim)) for idx in range(self.k)], dim=2)
 
         # Total weight, will be used for normalization 
         tot_weight = weight.sum()
@@ -334,8 +334,18 @@ class EigenFunctionTask(TrainingTask):
         mean_list = [(y[:,idx] * weight).sum() / tot_weight for idx in range(self.k)]
         var_list = [(y[:,idx]**2 * weight).sum() / tot_weight - mean_list[idx]**2 for idx in range(self.k)]
 
-        # Compute Rayleigh quotients as eigenvalues
-        eig_vals = torch.tensor([1.0 / (tot_weight * self._beta) * torch.sum((y_grad_vec[:,:,idx]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[idx] for idx in range(self.k)]).to(dtype=torch.get_default_dtype())
+        if self.lag_idx == 0 :
+            """
+              Compute gradients with respect to coordinates
+              The flag create_graph=True is needed, because later we need to compute
+              gradients w.r.t. parameters; Please refer to the torch.autograd.grad function for details.
+            """
+            y_grad_vec = torch.stack([torch.autograd.grad(outputs=y[:,idx].sum(), inputs=X, retain_graph=True, create_graph=True)[0].reshape((-1,self.tot_dim)) for idx in range(self.k)], dim=2)
+            # Compute Rayleigh quotients as eigenvalues
+            eig_vals = torch.tensor([1.0 / (tot_weight * self._beta) * torch.sum((y_grad_vec[:,:,idx]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[idx] for idx in range(self.k)]).to(dtype=torch.get_default_dtype())
+        else :
+            y_lagged = self.model(self.preprocessing_layer(X_lagged))
+            eig_vals = torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / var_list[idx] for idx in range(self.k)])
 
         cvec = range(self.k)
         if self._sort_eigvals_in_training :
@@ -343,7 +353,11 @@ class EigenFunctionTask(TrainingTask):
             # Sort the eigenvalues 
             eig_vals = eig_vals[cvec]
 
-        non_penalty_loss = 1.0 / (tot_weight * self._beta) * sum([self._eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.k)])
+        if self.lag_idx == 0 :
+            non_penalty_loss = 1.0 / (tot_weight * self._beta) * sum([self._eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.k)])
+        else :
+            non_penalty_loss = 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / var_list[cvec[idx]] for idx in range(self.num_reg)])
+
 
         penalty = torch.zeros(1, requires_grad=True)
 
@@ -363,8 +377,12 @@ class EigenFunctionTask(TrainingTask):
         r"""
         Function to train the model.
         """
+        ll = self._feature_traj.shape[0] - self.lag_idx
+
+        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj[:ll, :], self.weights[:ll], torch.arange(ll, dtype=torch.long), test_size=self.test_ratio)  
+
         # split the dataset into a training set (and its associated weights) and a test set
-        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._traj, self._weights, torch.arange(self._traj.shape[0], dtype=torch.long), test_size=self.test_ratio)  
+        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._traj[:ll,:], self._weights[:ll], torch.arange(ll, dtype=torch.long), test_size=self.test_ratio)  
 
         # method to construct data batches and iterate over them
         train_loader = torch.utils.data.DataLoader(dataset=torch.utils.data.TensorDataset(X_train, w_train, index_train),
@@ -394,13 +412,18 @@ class EigenFunctionTask(TrainingTask):
 
                 X, weight, index = X.to(self.device), weight.to(self.device), index.to(self.device)
 
-                # we will compute spatial gradients
-                X.requires_grad_()
                 # Clear gradients w.r.t. parameters
                 self.optimizer.zero_grad(set_to_none=True)
 
+                if self.lag_idx == 0 :
+                    # we will compute spatial gradients
+                    X.requires_grad_()
+                    X_lagged = None
+                else :
+                    X_lagged = self._traj[index + self.lag_idx]
+
                 # Evaluate loss
-                loss, eig_vals, non_penalty_loss, penalty, self._cvec = self.loss_func(X, weight)
+                loss, eig_vals, non_penalty_loss, penalty, self._cvec = self.loss_func(X, X_lagged, weight)
                 # Get gradient with respect to parameters of the model
                 loss.backward(retain_graph=True)
                 # Store loss
@@ -539,6 +562,252 @@ class AutoEncoderTask(TrainingTask):
                 self.optimizer.zero_grad(set_to_none=True)
                 # Evaluate loss
                 loss = self.weighted_MSE_loss(X, weight)
+                # Get gradient with respect to parameters of the model
+                loss.backward()
+                # Store loss
+                train_loss.append(loss)
+                # Updating parameters
+                self.optimizer.step()
+
+            if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
+                self.save_model(epoch)
+                if loss < min_loss:
+                    min_loss = loss
+                    self.save_model(epoch, 'best')
+
+            # Evaluate the test loss on the test dataset
+            self.model.eval()
+            with torch.no_grad():
+                # Evaluation of test loss
+                test_loss = []
+                for iteration, [X, weight, index] in enumerate(test_loader):
+
+                    X, weight, index = X.to(self.device), weight.to(self.device), index.to(self.device)
+
+                    loss = self.weighted_MSE_loss(X, weight)
+                    # Store loss
+                    test_loss.append(loss)
+                self.loss_list.append([torch.tensor(train_loss), torch.tensor(test_loss)])
+                
+            self.writer.add_scalar('Loss/train', torch.mean(torch.tensor(train_loss)), epoch)
+            self.writer.add_scalar('Loss/test', torch.mean(torch.tensor(test_loss)), epoch)
+
+# Task to train a regularized autoencoder
+class RegAutoEncoderTask(TrainingTask):
+    r"""Training task for regularized autoencoder.
+
+    Args:
+        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): trajectory data with weights
+        pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing layer. It corresponds to the function :math:`r:\mathbb{R}^{d}\rightarrow \mathbb{R}^{d_r}` in :ref:`rep_colvars`
+        model (:class:`colvarsfinder.nn.AutoEncoder`): neural network to be trained
+        model_path (str): directory to save training results
+        learning_rate (float): learning rate
+        load_model_filename (str): filename of a trained neural network, used to restart from a previous training if provided
+        save_model_every_step (int): how often to save model
+        batch_size (int): size of mini-batch 
+        num_epochs (int): number of training epochs
+        test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data
+        optimizer_name (str): name of optimizer used for training. either 'Adam' or 'SGD'
+        device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
+        verbose (bool): print more information if true
+        
+    This task trains a regularized autoencoder using the loss discussed in :ref:`loss_autoencoder`. The neural networks representing the encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and the decoder :math:`f_{enc}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` are stored in :attr:`model.encoder` and :attr:`model.decoder`, respectively.
+
+    Attributes:
+        model: the same as the input parameter
+        preprocessing_layer: the same as the input parameter pp_layer
+        loss_list: list of loss values on training data and test data during the training
+
+    """
+    def __init__(self, traj_obj, 
+                        pp_layer, 
+                        model,
+                        model_path, 
+                        eig_weights, 
+                        learning_rate=0.01, 
+                        load_model_filename=None,
+                        save_model_every_step=10, 
+                        batch_size=1000, 
+                        num_epochs=10,
+                        test_ratio=0.2, 
+                        optimizer_name='Adam', 
+                        alpha=[0.0, 0.0], 
+                        gamma=[0.0, 0.0],
+                        lag_ae_idx=0,
+                        lag_idx=0,
+                        beta=1.0,
+                        device= torch.device('cpu'),
+                        verbose=True):
+
+        super().__init__( traj_obj, pp_layer,  model, model_path, learning_rate, load_model_filename, save_model_every_step, model.encoded_dim, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
+
+        self.init_model_and_optimizer()
+
+        #--- prepare the data ---
+        self.weights = torch.tensor(traj_obj.weights).to(dtype=torch.get_default_dtype())
+        self._feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory).to(dtype=torch.get_default_dtype()))
+        self.lag_idx = lag_idx
+        self.lag_ae_idx = lag_ae_idx
+        self.gamma = gamma
+        self.alpha = alpha
+        self.num_reg = model.num_reg
+
+        self._eig_w = eig_weights
+
+        # list of (i,j) pairs in the penalty term
+        if self.alpha[0] > 1e-5 :
+            self._beta = beta
+            self._ij_list = list(itertools.combinations(range(self.num_reg), 2))
+            self._num_ij_pairs = len(self._ij_list)
+            if self.lag_idx == 0 :
+                self._diag_coeff = torch.ones(self._feature_traj.shape[1])
+
+        # print information of trajectory
+        if self.verbose: print ( '\nShape of trajectory data array:\n {}'.format(self._feature_traj.shape), flush=True )
+
+    def colvar_model(self):
+        r"""
+        Return:
+            :external+pytorch:class:`torch.nn.Module`: neural network that represents collective variables :math:`\xi=f_{enc}\circ g`, given the :attr:`preprocessing_layer` that represents :math:`g` and the encoder :attr:`model.encoder` that represents :math:`f_{enc}`. 
+
+        This function is called by :meth:`TrainingTask.save_model` in the base class.
+        """
+        return torch.nn.Sequential(self.preprocessing_layer, self.model.encoder)
+
+    def weighted_MSE_loss(self, X, X_lagged, weight):
+        # Forward pass to get output
+        out = self.model.forward_ae(X)
+        # Evaluate loss
+        return (weight * torch.sum((out-X_lagged)**2, dim=1)).sum() / weight.sum()
+
+    def reg_enc_loss(self, X, weight):
+
+        X.requires_grad_()
+
+        tot_weight = weight.sum()
+
+        enc = self.model.encoder(X) 
+        enc_grad_vec = [torch.autograd.grad(outputs=enc[:,idx].sum(), inputs=X, retain_graph=True, create_graph=True)[0] for idx in range(self.k)]
+        enc_grad_vec = [enc_grad.reshape((-1, self.input_dim)) for enc_grad in enc_grad_vec]
+        enc_grad_loss = sum([1.0 / tot_weight * torch.sum((enc_grad_vec[idx]**2).sum(dim=1) * weight) for idx in range(self.k)])
+
+        # Mean and variance evaluated on data
+        mean_list = [(enc[:,idx] * weight).sum() / tot_weight for idx in range(self.k)]
+        var_list = [(enc[:,idx]**2 * weight).sum() / tot_weight - mean_list[idx]**2 for idx in range(self.k)]
+
+        # Sum of squares of variance for each eigenfunction
+        enc_var_penalty = sum([(var_list[idx] - 1.0)**2 for idx in range(self.k)])
+
+        loss = enc_grad_loss + self.gamma[1] * enc_var_penalty 
+
+        return loss 
+
+    def reg_eigen_loss(self, X, X_lagged=None, weight):
+        
+        if self.lag_idx == 0 :
+            X.requires_grad_()
+
+        tot_weight = weight.sum()
+
+        # Forward pass to get output
+        y = self.model.forward_reg(X) 
+        
+        # Mean and variance evaluated on data
+        mean_list = [(y[:,idx] * weight).sum() / tot_weight for idx in range(self.num_reg)]
+        var_list = [(y[:,idx]**2 * weight).sum() / tot_weight - mean_list[idx]**2 for idx in range(self.num_reg)]
+        
+        if self.lag_idx == 0:
+            y_grad_vec = [torch.autograd.grad(outputs=y[:,idx].sum(), inputs=X, retain_graph=True, create_graph=True)[0] for idx in range(self.num_reg)]
+            y_grad_vec = [y_grad.reshape((-1, self.input_dim)) for y_grad in y_grad_vec]
+            # Compute Rayleigh quotients as eigenvalues
+            eig_vals = torch.tensor([1.0 / (tot_weight * self._beta) * torch.sum((y_grad_vec[idx]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[idx] for idx in range(self.num_reg)])
+        else :
+            y_lagged = self.model.forward_reg(X_lagged) 
+            eig_vals = torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / var_list[idx] for idx in range(self.num_reg)])
+
+        cvec = np.argsort(eig_vals)
+            # Sort the eigenvalues 
+        eig_vals = eig_vals[cvec]
+                                            
+        if self.lag_idx == 0 :
+            non_penalty_loss = 1.0 / (tot_weight * self._beta) * sum([self.eig_w[idx] * torch.sum((y_grad_vec[cvec[idx]]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.num_reg)])
+        else :
+            non_penalty_loss = 1.0 / tot_weight * sum([self.eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / var_list[cvec[idx]] for idx in range(self.num_reg)])
+
+        # Sum of squares of variance for each eigenfunction
+        penalty = sum([(var_list[idx] - 1.0)**2 for idx in range(self.num_reg)])
+
+        for idx in range(self._num_ij_pairs):
+            ij = self._ij_list[idx]
+          # Sum of squares of covariance between two different eigenfunctions
+            penalty += ((y[:, ij[0]] * y[:, ij[1]] * weight).sum() / tot_weight - mean_list[ij[0]] * mean_list[ij[1]])**2
+
+        reg_loss = 1.0 * non_penalty_loss + self.alpha[1] * penalty 
+
+        return reg_loss    
+
+    def train(self):
+        """Function to train the model
+        """
+
+        ll = self._feature_traj.shape[0] - max(self.lag_idx, self.lag_ae_idx)
+
+        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj[:ll, :], self.weights[:ll], torch.arange(ll, dtype=torch.long), test_size=self.test_ratio)  
+
+        # method to construct data batches and iterate over them
+        train_loader = torch.utils.data.DataLoader(dataset = torch.utils.data.TensorDataset(X_train, w_train, index_train),
+                                                   batch_size=self.batch_size,
+                                                   drop_last=True,
+                                                   shuffle=False)
+        test_loader  = torch.utils.data.DataLoader(dataset= torch.utils.data.TensorDataset(X_test, w_test, index_test),
+                                                   batch_size=self.batch_size,
+                                                   drop_last=True,
+                                                   shuffle=False)
+
+        # --- start the training over the required number of epochs ---
+        self.loss_list = []
+        min_loss = float("inf") 
+
+        print ("\nTraining starts.\n%d epochs in total, batch size: %d" % (self.num_epochs, self.batch_size)) 
+        print ("\nTrain set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_train), len(train_loader), len(train_loader) * self.num_epochs), flush=True)
+        print ("Test set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_test), len(test_loader), len(test_loader) * self.num_epochs), flush=True)
+
+        for epoch in tqdm(range(self.num_epochs)):
+            # Train the model by going through the whole dataset
+            self.model.train()
+            train_loss = []
+            for iteration, [X, weight, index] in enumerate(train_loader):
+
+                X, weight, index = X.to(self.device), weight.to(self.device), index.to(self.device)
+
+                # Clear gradients w.r.t. parameters
+                self.optimizer.zero_grad(set_to_none=True)
+
+                # Evaluate loss
+
+                if self.lag_ae_idx > 0 :
+                    X_lagged = self._feature_traj[index+self.lag_ae_idx].to(self.device)
+                else :
+                    X_lagged = X
+
+                ae_loss = self.weighted_MSE_loss(X, X_lagged, weight) 
+
+                if self.alpha[0] > 1e-5 :
+                    if self.lag_idx > 0 :
+                        X_lagged = self._feature_traj[index+self.lag_idx]
+                    else :
+                        X_lagged = None
+                    reg_loss_1 = self.reg_eigen_loss(X, X_lagged, weight)
+                else :
+                    reg_loss_1 = 0.0
+
+                if self.gamma[0] > 1e-5 :
+                    reg_loss_2 = self.reg_enc_loss(X, weight)
+                else :
+                    reg_loss_2 = 0.0
+
+                loss = ae_loss + self.alpha[0] * reg_loss_1 + self.gamma[0] * reg_loss_2
+
                 # Get gradient with respect to parameters of the model
                 loss.backward()
                 # Store loss
