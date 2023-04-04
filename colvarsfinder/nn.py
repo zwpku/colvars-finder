@@ -102,11 +102,12 @@ class AutoEncoder(torch.nn.Module):
         """
         return self.decoder(self.encoder(inp))
 
-class DynRegAE(torch.nn.Module):
+class RegAutoEncoder(torch.nn.Module):
     def __init__(self, e_layer_dims, d_layer_dims, reg_layer_dims, K, activation=torch.nn.Tanh()):
-        super(DynRegAE, self).__init__()
+        super(RegAutoEncoder, self).__init__()
         self.encoder = create_sequential_nn(e_layer_dims, activation)
         self.decoder = create_sequential_nn(d_layer_dims, activation)
+        self.encoded_dim = e_layer_dims[-1]
         self.num_reg = K
         self._num_encoder_layer = len(e_layer_dims) - 1
 
