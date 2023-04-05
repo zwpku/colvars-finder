@@ -12,6 +12,12 @@ This module implements PyTorch neural network classes that are used in module :m
 .. autoclass:: AutoEncoder
     :members:
 
+.. autoclass:: RegAutoEncoder 
+    :members:
+
+.. autoclass:: RegModel 
+    :members:
+
 .. autoclass:: EigenFunctions
     :members:
 """
@@ -103,15 +109,42 @@ class AutoEncoder(torch.nn.Module):
         return self.decoder(self.encoder(inp))
 
 class RegAutoEncoder(torch.nn.Module):
+    r"""Neural network representing a regularized autoencoder
+
+    Args:
+        e_layer_dims (list of ints): dimensions of layers of encoder
+        d_layer_dims (list of ints): dimensions of layers of decoder
+        reg_layer_dims (list of ints): dimensions of layers of regulator 
+        activation: PyTorch non-linear activation function
+
+    Raise:
+        AssertionError: if e_layer_dims[-1] != d_layer_dims[0] or e_layer_dims[-1] != reg_layer_dims[0] 
+
+    Attributes:
+        encoder: feedforward PyTorch neural network representing encoder
+        decoder: feedforward PyTorch neural network representing decoder
+        reg:     feedforward PyTorch neural network representing the regulator when K>0, or None if K=0
+        encoded_dim (int): encoded dimension
+        num_reg (int) : number of eigenfunctions used for regularization (K)
+    """
+
     def __init__(self, e_layer_dims, d_layer_dims, reg_layer_dims, K, activation=torch.nn.Tanh()):
         super(RegAutoEncoder, self).__init__()
+
+        assert e_layer_dims[-1] == d_layer_dims[0], "ouput dimension of encoder and input dimension of decoder do not match!"
+        assert K == 0 or e_layer_dims[-1] == reg_layer_dims[0], "ouput dimension of encoder and input dimension of regulator part do not match!"
+
         self.encoder = create_sequential_nn(e_layer_dims, activation)
         self.decoder = create_sequential_nn(d_layer_dims, activation)
         self.encoded_dim = e_layer_dims[-1]
+
         self.num_reg = K
         self._num_encoder_layer = len(e_layer_dims) - 1
 
-        self.reg = torch.nn.ModuleList([create_sequential_nn(reg_layer_dims, activation) for idx in range(K)])
+        if K > 0 :
+            self.reg = torch.nn.ModuleList([create_sequential_nn(reg_layer_dims, activation) for idx in range(K)])
+        else :
+            self.reg = None
 
     def get_params_of_cv(self, cv_idx):
         r"""
@@ -130,9 +163,25 @@ class RegAutoEncoder(torch.nn.Module):
         return param_vec
 
     def forward_ae(self, inp):
+        r"""
+        Args:
+            inp: PyTorch tensor, the output of preprocessing layer. Its shape is :math:`[l, d_r]`.
+        Return: 
+            value of autoencoder given the input tensor *inp* 
+        """
+
         return self.decoder(self.encoder(inp))
 
     def forward_reg(self, inp):
+        r"""
+        Args:
+            inp: PyTorch tensor, the output of preprocessing layer. Its shape is :math:`[l, d_r]`.
+        Return: 
+            value of eigenfunctions (used as regularization) given the input tensor *inp* 
+        """
+
+        assert self.num_reg > 0, 'number of eigenfunctions is not positive.'
+
         encoded = self.encoder(inp)
         return torch.cat([nn(encoded) for nn in self.reg], dim=1)
 
@@ -141,8 +190,13 @@ class RegAutoEncoder(torch.nn.Module):
         return torch.cat((self.decoder(encoded), [nn(encoded) for nn in self.reg]), dim=1)
 
 class RegModel(torch.nn.Module):
+    r"""neural network representing the eigenfunctions built from a :class:`RegAutoEncoder`.
+    """
     def __init__(self, reg_ae):
         super(RegModel, self).__init__()
+
+        assert reg_ae.num_reg > 0, 'number of eigenfunctions is not positive.'
+
         self.encoder = reg_ae.encoder
         self.reg = reg_ae.reg
 
