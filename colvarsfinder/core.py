@@ -316,9 +316,7 @@ class EigenFunctionTask(TrainingTask):
             Functions in :attr:`model` may not be sorted according to the magnitude of eigenvalues. This function returns a sorted model that can then be saved to file.
         """
 
-        copyed_model = copy.deepcopy(model)
-        self.eigen_funcs = torch.nn.ModuleList([copy.deepcopy(model.eigen_funcs[idx]) for idx in cvec])
-        return copyed_model
+        return torch.nn.ModuleList([copy.deepcopy(model.eigen_funcs[idx]) for idx in cvec])
 
     def colvar_model(self):
         r"""
@@ -875,8 +873,6 @@ class RegAutoEncoderTask(TrainingTask):
 
                 loss = ae_loss + self.alpha[0] * reg_eigen_loss_0 + self.alpha[1] * reg_eigen_loss_1 \
                         + self.gamma[0] * reg_enc_loss_0 + self.gamma[1] * reg_enc_loss_1 + self.gamma[2] * reg_enc_loss_2
-
-                print ([loss, ae_loss, reg_eigen_loss_0, reg_eigen_loss_1, reg_enc_loss_0, reg_enc_loss_1, reg_enc_loss_2])
 
                 # Get gradient with respect to parameters of the model
                 loss.backward()
