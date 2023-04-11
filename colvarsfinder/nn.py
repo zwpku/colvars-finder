@@ -192,17 +192,19 @@ class RegAutoEncoder(torch.nn.Module):
 class RegModel(torch.nn.Module):
     r"""neural network representing the eigenfunctions built from a :class:`RegAutoEncoder`.
     """
-    def __init__(self, reg_ae):
+    def __init__(self, reg_ae, cvec):
         super(RegModel, self).__init__()
 
         assert reg_ae.num_reg > 0, 'number of eigenfunctions is not positive.'
+        assert len(cvec) == reg_ae.num_reg
 
         self.encoder = reg_ae.encoder
         self.reg = reg_ae.reg
+        self.cvec = cvec
 
     def forward(self, inp):
         encoded = self.encoder(inp)
-        return torch.cat([nn(encoded) for nn in self.reg], dim=1)
+        return torch.cat([self.reg[idx](encoded) for idx in self.cvec], dim=1)
 
 # eigenfunction class
 class EigenFunctions(torch.nn.Module):

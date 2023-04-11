@@ -53,6 +53,8 @@ import copy
 from abc import ABC, abstractmethod
 from tqdm import tqdm
 
+from colvarsfinder.nn import RegModel
+
 from openmm import unit
 
 class TrainingTask(ABC):
@@ -316,7 +318,9 @@ class EigenFunctionTask(TrainingTask):
             Functions in :attr:`model` may not be sorted according to the magnitude of eigenvalues. This function returns a sorted model that can then be saved to file.
         """
 
-        return torch.nn.ModuleList([copy.deepcopy(model.eigen_funcs[idx]) for idx in cvec])
+        copyed_model = copy.deepcopy(model)
+        copyed_model.eigen_funcs = torch.nn.ModuleList([copy.deepcopy(model.eigen_funcs[idx]) for idx in cvec])
+        return copyed_model
 
     def colvar_model(self):
         r"""
@@ -328,7 +332,7 @@ class EigenFunctionTask(TrainingTask):
         reordered_model = self.get_reordered_eigenfunctions(self.model, self._cvec)
         return torch.nn.Sequential(self.preprocessing_layer, reordered_model)
 
-    def loss_func(self, X, X_lagged, weight):
+    def loss_func(self, X, weight, X_lagged, weight_lagged):
 
         # Evaluate function value on data
         y = self.model(self.preprocessing_layer(X))
@@ -340,6 +344,12 @@ class EigenFunctionTask(TrainingTask):
         mean_list = [(y[:,idx] * weight).sum() / tot_weight for idx in range(self.k)]
         var_list = [(y[:,idx]**2 * weight).sum() / tot_weight - mean_list[idx]**2 for idx in range(self.k)]
 
+        if self.lag_idx > 0 :
+            tot_weight_lagged = weight_lagged.sum()
+            y_lagged = self.model(self.preprocessing_layer(X_lagged))
+            mean_list_lagged = [(y_lagged[:,idx] * weight_lagged).sum() / tot_weight_lagged for idx in range(self.k)]
+            var_list_lagged = [(y_lagged[:,idx]**2 * weight_lagged).sum() / tot_weight_lagged - mean_list_lagged[idx]**2 for idx in range(self.k)]
+
         if self.lag_idx == 0 :
             """
               Compute gradients with respect to coordinates
@@ -350,8 +360,7 @@ class EigenFunctionTask(TrainingTask):
             # Compute Rayleigh quotients as eigenvalues
             eig_vals = torch.tensor([1.0 / (tot_weight * self._beta) * torch.sum((y_grad_vec[:,:,idx]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[idx] for idx in range(self.k)]).to(dtype=torch.get_default_dtype())
         else :
-            y_lagged = self.model(self.preprocessing_layer(X_lagged))
-            eig_vals = torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / var_list[idx] for idx in range(self.k)])
+            eig_vals = torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / (var_list[idx] + var_list_lagged[idx]) for idx in range(self.k)])
 
         cvec = range(self.k)
         if self._sort_eigvals_in_training :
@@ -362,7 +371,7 @@ class EigenFunctionTask(TrainingTask):
         if self.lag_idx == 0 :
             non_penalty_loss = 1.0 / (tot_weight * self._beta) * sum([self._eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.k)])
         else :
-            non_penalty_loss = 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / var_list[cvec[idx]] for idx in range(self.k)])
+            non_penalty_loss = 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list[cvec[idx]] + var_list_lagged[cvec[idx]]) for idx in range(self.k)])
 
         penalty = torch.zeros(1, requires_grad=True)
 
@@ -426,9 +435,10 @@ class EigenFunctionTask(TrainingTask):
                     X_lagged = None
                 else :
                     X_lagged = self._traj[index + self.lag_idx]
+                    weight_lagged = self._weights[index + self.lag_idx]
 
                 # Evaluate loss
-                loss, eig_vals, non_penalty_loss, penalty, self._cvec = self.loss_func(X, X_lagged, weight)
+                loss, eig_vals, non_penalty_loss, penalty, self._cvec = self.loss_func(X, weight, X_lagged, weight_lagged)
                 # Get gradient with respect to parameters of the model
                 loss.backward(retain_graph=True)
                 # Store loss
@@ -454,10 +464,12 @@ class EigenFunctionTask(TrainingTask):
                     # we will compute spatial gradients
                     X.requires_grad_()
                     X_lagged = None
+                    weight_lagged = None
                 else :
                     X_lagged = self._traj[index + self.lag_idx]
+                    weight_lagged = self._weights[index + self.lag_idx]
 
-                loss, eig_vals, non_penalty_loss, penalty, cvec = self.loss_func(X, X_lagged, weight)
+                loss, eig_vals, non_penalty_loss, penalty, cvec = self.loss_func(X, weight, X_lagged, weight_lagged)
                 # Store loss
                 test_eig_vals.append(eig_vals)
                 test_penalty.append(penalty)
@@ -518,7 +530,7 @@ class AutoEncoderTask(TrainingTask):
         self.init_model_and_optimizer()
 
         #--- prepare the data ---
-        self.weights = torch.tensor(traj_obj.weights).to(dtype=torch.get_default_dtype())
+        self._weights = torch.tensor(traj_obj.weights).to(dtype=torch.get_default_dtype())
         self._feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory).to(dtype=torch.get_default_dtype()))
 
         # print information of trajectory
@@ -543,7 +555,7 @@ class AutoEncoderTask(TrainingTask):
         """Function to train the model
         """
         # split the dataset into a training set (and its associated weights) and a test set
-        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj, self.weights, torch.arange(self._feature_traj.shape[0], dtype=torch.long), test_size=self.test_ratio)  
+        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj, self._weights, torch.arange(self._feature_traj.shape[0], dtype=torch.long), test_size=self.test_ratio)  
 
         # method to construct data batches and iterate over them
         train_loader = torch.utils.data.DataLoader(dataset = torch.utils.data.TensorDataset(X_train, w_train, index_train),
@@ -665,7 +677,7 @@ class RegAutoEncoderTask(TrainingTask):
         assert model.num_reg == len(eig_weights), 'number of weights does not match the number of eigenfunctions!'
 
         #--- prepare the data ---
-        self.weights = torch.tensor(traj_obj.weights).to(dtype=torch.get_default_dtype())
+        self._weights = torch.tensor(traj_obj.weights).to(dtype=torch.get_default_dtype())
         self._feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory).to(dtype=torch.get_default_dtype()))
         self.lag_idx = lag_idx
         self.lag_ae_idx = lag_ae_idx
@@ -701,6 +713,15 @@ class RegAutoEncoderTask(TrainingTask):
         """
         return torch.nn.Sequential(self.preprocessing_layer, self.model.encoder)
 
+    def reg_model(self):
+
+        if self._cvec is None :
+            self._cvec = torch.range(self.model.num_reg)
+
+        reg_reordered = RegModel(self.model, self._cvec) 
+        #torch.nn.ModuleList([copy.deepcopy(self.model.reg[idx]) for idx in self._cvec])
+        return torch.nn.Sequential(self.preprocessing_layer, reg_reordered)
+
     def weighted_MSE_loss(self, X, X_lagged, weight):
         # Forward pass to get output
         out = self.model.forward_ae(X)
@@ -722,8 +743,6 @@ class RegAutoEncoderTask(TrainingTask):
 
     def reg_enc_norm_loss(self, X, weight):
 
-        X.requires_grad_()
-
         tot_weight = weight.sum()
 
         enc = self.model.encoder(X) 
@@ -738,8 +757,6 @@ class RegAutoEncoderTask(TrainingTask):
         return loss
 
     def reg_enc_orthognal_loss(self, X, weight):
-
-        X.requires_grad_()
 
         tot_weight = weight.sum()
 
@@ -759,7 +776,7 @@ class RegAutoEncoderTask(TrainingTask):
 
         return loss
 
-    def reg_eigen_loss(self, X, X_lagged, weight):
+    def reg_eigen_loss(self, X, weight, X_lagged, weight_lagged):
         
         if self.lag_idx == 0 :
             X.requires_grad_()
@@ -772,23 +789,28 @@ class RegAutoEncoderTask(TrainingTask):
         # Mean and variance evaluated on data
         mean_list = [(y[:,idx] * weight).sum() / tot_weight for idx in range(self.num_reg)]
         var_list = [(y[:,idx]**2 * weight).sum() / tot_weight - mean_list[idx]**2 for idx in range(self.num_reg)]
-        
+
+        if self.lag_idx > 0 :
+            tot_weight_lagged = weight_lagged.sum()
+            y_lagged = self.model.forward_reg(X_lagged)
+            mean_list_lagged = [(y_lagged[:,idx] * weight_lagged).sum() / tot_weight_lagged for idx in range(self.k)]
+            var_list_lagged = [(y_lagged[:,idx]**2 * weight_lagged).sum() / tot_weight_lagged - mean_list_lagged[idx]**2 for idx in range(self.k)]
+
         if self.lag_idx == 0:
             y_grad_vec = torch.stack([torch.autograd.grad(outputs=y[:,idx].sum(), inputs=X, retain_graph=True, create_graph=True)[0].reshape((-1,self.tot_dim)) for idx in range(self.num_reg)], dim=2)
             # Compute Rayleigh quotients as eigenvalues
             eig_vals = torch.tensor([1.0 / (tot_weight * self._beta) * torch.sum((y_grad_vec[:,:,idx]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[idx] for idx in range(self.num_reg)]).to(dtype=torch.get_default_dtype())
         else :
-            y_lagged = self.model.forward_reg(X_lagged) 
-            eig_vals = torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / var_list[idx] for idx in range(self.num_reg)])
+            eig_vals = torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / (var_list_lagged[idx] + var_list[idx]) for idx in range(self.num_reg)])
 
         cvec = np.argsort(eig_vals)
-            # Sort the eigenvalues 
+        # Sort the eigenvalues 
         eig_vals = eig_vals[cvec]
                                             
         if self.lag_idx == 0 :
             non_penalty_loss = 1.0 / (tot_weight * self._beta) * sum([self._eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.num_reg)])
         else :
-            non_penalty_loss = 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / var_list[cvec[idx]] for idx in range(self.num_reg)])
+            non_penalty_loss = 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list[cvec[idx]] + var_list[cvec[idx]]) for idx in range(self.num_reg)])
 
         # Sum of squares of variance for each eigenfunction
         penalty = sum([(var_list[idx] - 1.0)**2 for idx in range(self.num_reg)])
@@ -798,7 +820,7 @@ class RegAutoEncoderTask(TrainingTask):
           # Sum of squares of covariance between two different eigenfunctions
             penalty += ((y[:, ij[0]] * y[:, ij[1]] * weight).sum() / tot_weight - mean_list[ij[0]] * mean_list[ij[1]])**2
 
-        return non_penalty_loss, penalty 
+        return eig_vals, non_penalty_loss, penalty, cvec
 
     def train(self):
         """Function to train the model
@@ -806,7 +828,7 @@ class RegAutoEncoderTask(TrainingTask):
 
         ll = self._feature_traj.shape[0] - max(self.lag_idx, self.lag_ae_idx)
 
-        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj[:ll, :], self.weights[:ll], torch.arange(ll, dtype=torch.long), test_size=self.test_ratio)  
+        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj[:ll, :], self._weights[:ll], torch.arange(ll, dtype=torch.long), test_size=self.test_ratio)  
 
         # method to construct data batches and iterate over them
         train_loader = torch.utils.data.DataLoader(dataset = torch.utils.data.TensorDataset(X_train, w_train, index_train),
@@ -849,12 +871,15 @@ class RegAutoEncoderTask(TrainingTask):
                 if self.alpha[0] > self._eps :
                     if self.lag_idx > 0 :
                         X_lagged = self._feature_traj[index+self.lag_idx]
+                        weight_lagged = self._weights[index + self.lag_idx]
                     else :
                         X_lagged = None
-                    reg_eigen_loss_0, reg_eigen_loss_1 = self.reg_eigen_loss(X, X_lagged, weight)
+                        weight_lagged = None
+                    eig_vals, reg_eigen_loss_0, reg_eigen_loss_1, self._cvec = self.reg_eigen_loss(X, weight, X_lagged, weight_lagged)
                 else :
                     reg_eigen_loss_0 = 0.0
                     reg_eigen_loss_1 = 0.0
+                    eig_vals = np.zeros(self.num_reg)
 
                 if self.gamma[0]  > self._eps :
                     reg_enc_loss_0 = self.reg_enc_grad_loss(X, weight)
@@ -877,7 +902,8 @@ class RegAutoEncoderTask(TrainingTask):
                 # Get gradient with respect to parameters of the model
                 loss.backward()
                 # Store loss
-                train_loss.append([loss, ae_loss, reg_eigen_loss_0, reg_eigen_loss_1, reg_enc_loss_0, reg_enc_loss_1, reg_enc_loss_2])
+                train_loss.append([loss, ae_loss, reg_eigen_loss_0, reg_eigen_loss_1] \
+                            + [eig_vals[i] for i in range(self.num_reg)] + [reg_enc_loss_0, reg_enc_loss_1, reg_enc_loss_2])
                 # Updating parameters
                 self.optimizer.step()
 
@@ -904,12 +930,15 @@ class RegAutoEncoderTask(TrainingTask):
                 if self.alpha[0] > self._eps :
                     if self.lag_idx > 0 :
                         X_lagged = self._feature_traj[index+self.lag_idx]
+                        weight_lagged = self._weights[index + self.lag_idx]
                     else :
                         X_lagged = None
-                    reg_eigen_loss_0, reg_eigen_loss_1 = self.reg_eigen_loss(X, X_lagged, weight)
+                        weight_lagged = None
+                    eig_vals, reg_eigen_loss_0, reg_eigen_loss_1, _ = self.reg_eigen_loss(X, weight, X_lagged, weight_lagged)
                 else :
                     reg_eigen_loss_0 = 0.0
                     reg_eigen_loss_1 = 0.0
+                    eig_vals = np.zeros(self.num_reg)
 
                 if self.gamma[0]  > self._eps :
                     reg_enc_loss_0 = self.reg_enc_grad_loss(X, weight)
@@ -930,11 +959,14 @@ class RegAutoEncoderTask(TrainingTask):
                         + self.gamma[0] * reg_enc_loss_0 + self.gamma[1] * reg_enc_loss_1 + self.gamma[2] * reg_enc_loss_2
 
                 # Store loss
-                test_loss.append([loss, ae_loss, reg_eigen_loss_0, reg_eigen_loss_1, reg_enc_loss_0, reg_enc_loss_1, reg_enc_loss_2])
+                test_loss.append([loss, ae_loss, reg_eigen_loss_0, reg_eigen_loss_1] \
+                            + [eig_vals[i] for i in range(self.num_reg)] + [reg_enc_loss_0, reg_enc_loss_1, reg_enc_loss_2])
 
             self.loss_list.append([torch.tensor(train_loss), torch.tensor(test_loss)])
 
-            loss_names = ['loss', 'ae_loss', 'eigen_non_penalty', 'eigen_penalty', 'encoder_gradient', 'encoder_norm', 'encoder_orthogonality']
+            loss_names = ['loss', 'ae_loss', 'eigen_non_penalty', 'eigen_penalty'] \
+                            + ['eig_%d' % i for i in range(self.num_reg)] \
+                            + ['encoder_gradient', 'encoder_norm', 'encoder_orthogonality']
             mean_train_loss = torch.mean(torch.tensor(train_loss), 0)
             mean_test_loss = torch.mean(torch.tensor(test_loss), 0)
             for i, name in enumerate(loss_names):
