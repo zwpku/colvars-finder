@@ -717,7 +717,7 @@ class RegAutoEncoderTask(TrainingTask):
     def reg_model(self):
 
         if self._cvec is None :
-            self._cvec = torch.range(self.model.num_reg)
+            self._cvec = torch.arange(self.model.num_reg)
 
         reg_reordered = RegModel(self.model, self._cvec) 
         #torch.nn.ModuleList([copy.deepcopy(self.model.reg[idx]) for idx in self._cvec])
