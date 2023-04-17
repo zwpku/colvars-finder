@@ -687,6 +687,7 @@ class RegAutoEncoderTask(TrainingTask):
         self.tot_dim = self._feature_traj[0,...].shape[0]
         self._eps = 1e-5
         self._eig_w = eig_weights
+        self._cvec = None
 
         # list of (i,j) pairs in the penalty term
         if self.alpha[0] > self._eps :
