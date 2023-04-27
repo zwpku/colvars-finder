@@ -634,11 +634,12 @@ class RegAutoEncoderTask(TrainingTask):
         num_epochs (int): number of training epochs
         test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data
         optimizer_name (str): name of optimizer used for training. either 'Adam' or 'SGD' 
-        alpha (list of floats length of 2): weights in the regularization loss involving eigenfunctions.
-        gamma (list of floats, length of 3): weights in the regularization loss, related to constraints on the (squared, integrated) gradient norm, the norm, and the orthogonality of the encoders.
-        lag_ae_idx: 'lag time' in the reconstruction loss. Positive number corresponds to time-lagged autoencoder, while 0 for standard autoencoder.
-        lag_idx: 'lag time' in the regularization loss involving eigenfunctions. Positive number corresponds to transfer operator, while 0 corresponds to generator.
-        beta (float): inverse of temperature, only relevant when the regularization loss corresponds to generator (i.e. lag_idx=0). 
+        alpha (float): weight of the reconstruction loss
+        gamma (list of floats length of 2): weights in the regularization loss involving eigenfunctions
+        eta (list of floats, length of 3): weights in the regularization loss, related to constraints on the (squared, integrated) gradient norm, the norm, and the orthogonality of the encoders
+        lag_ae_idx: 'lag time' in the reconstruction loss. Positive number corresponds to time-lagged autoencoder, while 0 for standard autoencoder
+        lag_idx: 'lag time' in the regularization loss involving eigenfunctions. Positive number corresponds to transfer operator, while 0 corresponds to generator
+        beta (float): inverse of temperature, only relevant when the regularization loss corresponds to generator (i.e. lag_idx=0)
         device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
         verbose (bool): print more information if true
         
@@ -662,8 +663,9 @@ class RegAutoEncoderTask(TrainingTask):
                         num_epochs=10,
                         test_ratio=0.2, 
                         optimizer_name='Adam', 
-                        alpha=[0.0, 0.0], 
-                        gamma=[0.0, 0.0, 0.0],
+                        alpha=1.0, 
+                        gamma=[0.0, 0.0], 
+                        eta=[0.0, 0.0, 0.0],
                         lag_ae_idx=0,
                         lag_idx=0,
                         beta=1.0,
@@ -681,8 +683,9 @@ class RegAutoEncoderTask(TrainingTask):
         self._feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory).to(dtype=torch.get_default_dtype()))
         self.lag_idx = lag_idx
         self.lag_ae_idx = lag_ae_idx
-        self.gamma = gamma
         self.alpha = alpha
+        self.gamma = gamma
+        self.eta = eta
         self.num_reg = model.num_reg
         self.tot_dim = self._feature_traj[0,...].shape[0]
         self._eps = 1e-5
@@ -690,7 +693,7 @@ class RegAutoEncoderTask(TrainingTask):
         self._cvec = None
 
         # list of (i,j) pairs in the penalty term
-        if self.alpha[0] > self._eps :
+        if self.gamma[0] + self.gamma[1] > self._eps :
             assert self.num_reg > 0, 'number of eigenfunctions must be positive!'
             self._ij_list = list(itertools.combinations(range(self.num_reg), 2))
             self._num_ij_pairs = len(self._ij_list)
@@ -698,7 +701,7 @@ class RegAutoEncoderTask(TrainingTask):
                 self._beta = beta
                 self._diag_coeff = torch.ones(self.tot_dim)
 
-        if self.gamma[2] > self._eps : # orthogonality constraints
+        if self.eta[2] > self._eps : # orthogonality constraints
             self._enc_ij_list = list(itertools.combinations(range(self.k), 2))
             self._enc_num_ij_pairs = len(self._enc_ij_list)
 
@@ -869,36 +872,37 @@ class RegAutoEncoderTask(TrainingTask):
 
                 ae_loss = self.weighted_MSE_loss(X, X_lagged, weight) 
 
-                if self.alpha[0] > self._eps :
+                if self.gamma[0] + self.gamma[1] > self._eps :
                     if self.lag_idx > 0 :
                         X_lagged = self._feature_traj[index+self.lag_idx]
                         weight_lagged = self._weights[index + self.lag_idx]
                     else :
                         X_lagged = None
                         weight_lagged = None
+
                     eig_vals, reg_eigen_loss_0, reg_eigen_loss_1, self._cvec = self.reg_eigen_loss(X, weight, X_lagged, weight_lagged)
                 else :
-                    reg_eigen_loss_0 = 0.0
-                    reg_eigen_loss_1 = 0.0
+                    reg_eigen_loss_0 = 0 
+                    reg_eigen_loss_1 = 0
                     eig_vals = np.zeros(self.num_reg)
 
-                if self.gamma[0]  > self._eps :
+                if self.eta[0]  > self._eps :
                     reg_enc_loss_0 = self.reg_enc_grad_loss(X, weight)
                 else :
                     reg_enc_loss_0 = 0.0
 
-                if self.gamma[1]  > self._eps :
+                if self.eta[1]  > self._eps :
                     reg_enc_loss_1 = self.reg_enc_norm_loss(X, weight)
                 else :
                     reg_enc_loss_1 = 0.0
 
-                if self.gamma[2]  > self._eps :
+                if self.eta[2]  > self._eps :
                     reg_enc_loss_2 = self.reg_enc_orthognal_loss(X, weight)
                 else :
                     reg_enc_loss_2 = 0.0
 
-                loss = ae_loss + self.alpha[0] * reg_eigen_loss_0 + self.alpha[1] * reg_eigen_loss_1 \
-                        + self.gamma[0] * reg_enc_loss_0 + self.gamma[1] * reg_enc_loss_1 + self.gamma[2] * reg_enc_loss_2
+                loss = self.alpha * ae_loss + self.gamma[0] * reg_eigen_loss_0 + self.gamma[1] * reg_eigen_loss_1 \
+                        + self.eta[0] * reg_enc_loss_0 + self.eta[1] * reg_enc_loss_1 + self.eta[2] * reg_enc_loss_2
 
                 # Get gradient with respect to parameters of the model
                 loss.backward()
@@ -928,36 +932,37 @@ class RegAutoEncoderTask(TrainingTask):
 
                 ae_loss = self.weighted_MSE_loss(X, X_lagged, weight) 
 
-                if self.alpha[0] > self._eps :
+                if self.gamma[0] + self.gamma[1] > self._eps :
                     if self.lag_idx > 0 :
                         X_lagged = self._feature_traj[index+self.lag_idx]
                         weight_lagged = self._weights[index + self.lag_idx]
                     else :
                         X_lagged = None
                         weight_lagged = None
-                    eig_vals, reg_eigen_loss_0, reg_eigen_loss_1, _ = self.reg_eigen_loss(X, weight, X_lagged, weight_lagged)
+
+                    eig_vals, reg_eigen_loss_0, reg_eigen_loss_1, self._cvec = self.reg_eigen_loss(X, weight, X_lagged, weight_lagged)
                 else :
-                    reg_eigen_loss_0 = 0.0
-                    reg_eigen_loss_1 = 0.0
+                    reg_eigen_loss_0 = 0 
+                    reg_eigen_loss_1 = 0
                     eig_vals = np.zeros(self.num_reg)
 
-                if self.gamma[0]  > self._eps :
+                if self.eta[0]  > self._eps :
                     reg_enc_loss_0 = self.reg_enc_grad_loss(X, weight)
                 else :
                     reg_enc_loss_0 = 0.0
 
-                if self.gamma[1]  > self._eps :
+                if self.eta[1]  > self._eps :
                     reg_enc_loss_1 = self.reg_enc_norm_loss(X, weight)
                 else :
                     reg_enc_loss_1 = 0.0
 
-                if self.gamma[2]  > self._eps :
+                if self.eta[2]  > self._eps :
                     reg_enc_loss_2 = self.reg_enc_orthognal_loss(X, weight)
                 else :
                     reg_enc_loss_2 = 0.0
 
-                loss = ae_loss + self.alpha[0] * reg_eigen_loss_0 + self.alpha[1] * reg_eigen_loss_1 \
-                        + self.gamma[0] * reg_enc_loss_0 + self.gamma[1] * reg_enc_loss_1 + self.gamma[2] * reg_enc_loss_2
+                loss = self.alpha * ae_loss + self.gamma[0] * reg_eigen_loss_0 + self.gamma[1] * reg_eigen_loss_1 \
+                        + self.eta[0] * reg_enc_loss_0 + self.eta[1] * reg_enc_loss_1 + self.eta[2] * reg_enc_loss_2
 
                 # Store loss
                 test_loss.append([loss, ae_loss, reg_eigen_loss_0, reg_eigen_loss_1] \
