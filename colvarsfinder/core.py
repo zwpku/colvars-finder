@@ -91,9 +91,9 @@ class TrainingTask(ABC):
         optimizer_name: the same as the input parameter
         optimizer: either :external+pytorch:class:`torch.optim.Adam` or :external+pytorch:class:`torch.optim.SGD`
         device: the same as the input parameter
+        plot_class: plot callback class
+        plot_frequency: how often (epoch) to call plot function 
         verbose (bool): print more information if true
-
-        writer (`SummaryWriter`): TensorboardX writer
     """
     def __init__(self, 
                     traj_obj, 
@@ -109,6 +109,8 @@ class TrainingTask(ABC):
                     test_ratio, 
                     optimizer_name, 
                     device,
+                    plot_class,
+                    plot_frequency, 
                     verbose):
 
         self.traj_obj = traj_obj
@@ -124,6 +126,8 @@ class TrainingTask(ABC):
         self.model_path = model_path
         self.optimizer_name = optimizer_name
         self.device = device
+        self.plot_class = plot_class
+        self.plot_frequency = plot_frequency
         self.verbose = verbose
 
         self.model_name = type(self).__name__
@@ -246,6 +250,8 @@ class EigenFunctionTask(TrainingTask):
         test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data
         optimizer_name (str): name of optimizer used to train neural networks. either 'Adam' or 'SGD'
         device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
+        plot_class: plot callback class
+        plot_frequency: how often (epoch) to call plot function 
         verbose (bool): print more information if true
 
     Attributes:
@@ -272,9 +278,11 @@ class EigenFunctionTask(TrainingTask):
                         test_ratio=0.2, 
                         optimizer_name='Adam', 
                         device= torch.device('cpu'),
+                        plot_class=None,
+                        plot_frequency=0, 
                         verbose=True):
 
-        super().__init__( traj_obj, pp_layer,  model,  model_path,  learning_rate, load_model_filename, save_model_every_step, k, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
+        super().__init__( traj_obj, pp_layer,  model,  model_path, learning_rate, load_model_filename, save_model_every_step, k, batch_size, num_epochs, test_ratio, optimizer_name, device, plot_class, plot_frequency, verbose )
 
         self.model = model
 
@@ -452,6 +460,10 @@ class EigenFunctionTask(TrainingTask):
                     min_loss = loss
                     self.save_model(epoch, 'best')
 
+            if self.plot_frequency > 0 and epoch % self.plot_frequency == self.plot_frequency - 1 :
+                if self.plot_class is not None : 
+                    self.plot_class.plot(self.colvar_model(), epoch=epoch)
+
             # Evaluate the test loss on the test dataset
             test_loss = []
             test_eig_vals = []
@@ -501,6 +513,8 @@ class AutoEncoderTask(TrainingTask):
         test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data
         optimizer_name (str): name of optimizer used for training. either 'Adam' or 'SGD'
         device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
+        plot_class: plot callback class
+        plot_frequency: how often (epoch) to call plot function 
         verbose (bool): print more information if true
         
     This task trains autoencoder using the loss discussed in :ref:`loss_autoencoder`. The neural networks representing the encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and the decoder :math:`f_{enc}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` are stored in :attr:`model.encoder` and :attr:`model.decoder`, respectively.
@@ -523,9 +537,11 @@ class AutoEncoderTask(TrainingTask):
                         test_ratio=0.2, 
                         optimizer_name='Adam', 
                         device= torch.device('cpu'),
+                        plot_class=None,
+                        plot_frequency=0, 
                         verbose=True):
 
-        super().__init__( traj_obj, pp_layer,  model, model_path, learning_rate, load_model_filename, save_model_every_step, model.encoded_dim, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
+        super().__init__( traj_obj, pp_layer,  model, model_path, learning_rate, load_model_filename, save_model_every_step, model.encoded_dim, batch_size, num_epochs, test_ratio, optimizer_name, device, plot_class, plot_frequency, verbose)
 
         self.init_model_and_optimizer()
 
@@ -600,6 +616,10 @@ class AutoEncoderTask(TrainingTask):
                     min_loss = loss
                     self.save_model(epoch, 'best')
 
+            if self.plot_frequency > 0 and epoch % self.plot_frequency == self.plot_frequency - 1 :
+                if self.plot_class is not None : 
+                    self.plot_class.plot(self.colvar_model(), epoch=epoch)
+
             # Evaluate the test loss on the test dataset
             self.model.eval()
             with torch.no_grad():
@@ -641,6 +661,8 @@ class RegAutoEncoderTask(TrainingTask):
         lag_idx: 'lag time' in the regularization loss involving eigenfunctions. Positive number corresponds to transfer operator, while 0 corresponds to generator
         beta (float): inverse of temperature, only relevant when the regularization loss corresponds to generator (i.e. lag_idx=0)
         device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
+        plot_class: plot callback class
+        plot_frequency: how often (epoch) to call plot function 
         verbose (bool): print more information if true
         
     This task trains a regularized autoencoder using the loss discussed in :ref:`loss_autoencoder`. The neural networks representing the encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and the decoder :math:`f_{enc}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` are stored in :attr:`model.encoder` and :attr:`model.decoder`, respectively.
@@ -649,7 +671,6 @@ class RegAutoEncoderTask(TrainingTask):
         model: the same as the input parameter
         preprocessing_layer: the same as the input parameter pp_layer
         loss_list: list of loss values on training data and test data during the training
-
     """
     def __init__(self, traj_obj, 
                         pp_layer, 
@@ -670,9 +691,11 @@ class RegAutoEncoderTask(TrainingTask):
                         lag_idx=0,
                         beta=1.0,
                         device= torch.device('cpu'),
+                        plot_class=None,
+                        plot_frequency=0, 
                         verbose=True):
 
-        super().__init__( traj_obj, pp_layer,  model, model_path, learning_rate, load_model_filename, save_model_every_step, model.encoded_dim, batch_size, num_epochs, test_ratio, optimizer_name, device, verbose)
+        super().__init__( traj_obj, pp_layer,  model, model_path, learning_rate, load_model_filename, save_model_every_step, model.encoded_dim, batch_size, num_epochs, test_ratio, optimizer_name, device, plot_class, plot_frequency, verbose )
 
         self.init_model_and_optimizer()
 
@@ -917,6 +940,10 @@ class RegAutoEncoderTask(TrainingTask):
                 if loss < min_loss:
                     min_loss = loss
                     self.save_model(epoch, 'best')
+
+            if self.plot_frequency > 0 and epoch % self.plot_frequency == self.plot_frequency - 1 :
+                if self.plot_class is not None : 
+                    self.plot_class.plot(self.colvar_model(), self.reg_model(), epoch=epoch)
 
             # Evaluate the test loss on the test dataset
             test_loss = []
