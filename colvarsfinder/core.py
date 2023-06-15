@@ -871,7 +871,7 @@ class RegAutoEncoderTask(TrainingTask):
         if self.lag_idx == 0 :
             non_penalty_loss = 1.0 / (tot_weight * self._beta) * sum([self._eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.num_reg)])
         else :
-            non_penalty_loss = 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list[cvec[idx]] + var_list[cvec[idx]]) for idx in range(self.num_reg)])
+            non_penalty_loss = 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list_lagged[cvec[idx]] + var_list[cvec[idx]]) for idx in range(self.num_reg)])
 
         # Sum of squares of variance for each eigenfunction
         penalty = sum([(var_list[idx] - 1.0)**2 for idx in range(self.num_reg)])
