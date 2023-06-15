@@ -111,7 +111,8 @@ class TrainingTask(ABC):
                     device,
                     plot_class,
                     plot_frequency, 
-                    verbose):
+                    verbose,
+                    debug_mode):
 
         self.traj_obj = traj_obj
         self.preprocessing_layer = pp_layer.to(device)
@@ -129,6 +130,7 @@ class TrainingTask(ABC):
         self.plot_class = plot_class
         self.plot_frequency = plot_frequency
         self.verbose = verbose
+        self.debug_mode = debug_mode
 
         self.model_name = type(self).__name__
 
@@ -147,9 +149,12 @@ class TrainingTask(ABC):
         This function shall be called in the constructor of derived classes.
         """
 
-        if self.load_model_filename and os.path.isfile(self.load_model_filename): 
-            self.model.load_state_dict(torch.load(self.load_model_filename, map_location=self.device))
-            if self.verbose: print (f'model parameters loaded from: {self.load_model_filename}')
+        if self.load_model_filename :
+            if os.path.isfile(self.load_model_filename): 
+                self.model.load_state_dict(torch.load(self.load_model_filename, map_location=self.device))
+                if self.verbose: print (f'model parameters loaded from: {self.load_model_filename}')
+            else :
+                if self.verbose: print (f'model file not found: {self.load_model_filename}')
 
         if self.optimizer_name == 'Adam':
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
@@ -173,6 +178,14 @@ class TrainingTask(ABC):
         """
 
         if self.verbose: print (f"\n\nEpoch={epoch}:") 
+
+        if self.debug_mode is True :
+            model_save_dir = f'{self.model_path}/models'
+            if not os.path.exists(model_save_dir):
+                os.makedirs(model_save_dir)
+            #save the model
+            model_filename = f'{model_save_dir}/model_{epoch}.pt'
+            torch.save(self.model.state_dict(), model_filename)  
 
         model_save_dir = f'{self.model_path}/{description}'
 
@@ -225,6 +238,10 @@ class TrainingTask(ABC):
             :external+pytorch:class:`torch.nn.Module`: neural network that represents collective variables given :attr:`preprocessing_layer` and :attr:`model`.
         This function is called by :meth:`save_model`.
         """
+        pass
+
+    @abstractmethod
+    def reg_model(self):
         pass
 
 class EigenFunctionTask(TrainingTask):
@@ -280,9 +297,10 @@ class EigenFunctionTask(TrainingTask):
                         device= torch.device('cpu'),
                         plot_class=None,
                         plot_frequency=0, 
-                        verbose=True):
+                        verbose=True,
+                        debug_mode=True):
 
-        super().__init__( traj_obj, pp_layer,  model,  model_path, learning_rate, load_model_filename, save_model_every_step, k, batch_size, num_epochs, test_ratio, optimizer_name, device, plot_class, plot_frequency, verbose )
+        super().__init__( traj_obj, pp_layer,  model,  model_path, learning_rate, load_model_filename, save_model_every_step, k, batch_size, num_epochs, test_ratio, optimizer_name, device, plot_class, plot_frequency, verbose, debug_mode )
 
         self.model = model
 
@@ -339,6 +357,9 @@ class EigenFunctionTask(TrainingTask):
         """
         reordered_model = self.get_reordered_eigenfunctions(self.model, self._cvec)
         return torch.nn.Sequential(self.preprocessing_layer, reordered_model)
+
+    def reg_model(self):
+        return None
 
     def loss_func(self, X, weight, X_lagged, weight_lagged):
 
@@ -542,9 +563,10 @@ class AutoEncoderTask(TrainingTask):
                         device= torch.device('cpu'),
                         plot_class=None,
                         plot_frequency=0, 
-                        verbose=True):
+                        verbose=True,
+                        debug_mode=True):
 
-        super().__init__( traj_obj, pp_layer,  model, model_path, learning_rate, load_model_filename, save_model_every_step, model.encoded_dim, batch_size, num_epochs, test_ratio, optimizer_name, device, plot_class, plot_frequency, verbose)
+        super().__init__( traj_obj, pp_layer,  model, model_path, learning_rate, load_model_filename, save_model_every_step, model.encoded_dim, batch_size, num_epochs, test_ratio, optimizer_name, device, plot_class, plot_frequency, verbose, debug_mode)
 
         self.init_model_and_optimizer()
 
@@ -563,6 +585,9 @@ class AutoEncoderTask(TrainingTask):
         This function is called by :meth:`TrainingTask.save_model` in the base class.
         """
         return torch.nn.Sequential(self.preprocessing_layer, self.model.encoder)
+
+    def reg_model(self):
+        return None
 
     def weighted_MSE_loss(self, X, weight):
         # Forward pass to get output
@@ -700,9 +725,10 @@ class RegAutoEncoderTask(TrainingTask):
                         plot_class=None,
                         plot_frequency=0, 
                         freeze_encoder_in_reg_loss=False,
-                        verbose=True):
+                        verbose=True,
+                        debug_mode=True):
 
-        super().__init__( traj_obj, pp_layer,  model, model_path, learning_rate, load_model_filename, save_model_every_step, model.encoded_dim, batch_size, num_epochs, test_ratio, optimizer_name, device, plot_class, plot_frequency, verbose )
+        super().__init__( traj_obj, pp_layer,  model, model_path, learning_rate, load_model_filename, save_model_every_step, model.encoded_dim, batch_size, num_epochs, test_ratio, optimizer_name, device, plot_class, plot_frequency, verbose, debug_mode)
 
         self.init_model_and_optimizer()
 
