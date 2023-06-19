@@ -284,7 +284,7 @@ class EigenFunctionTask(TrainingTask):
                         eig_weights, 
                         diag_coeff=None,
                         beta=1.0, 
-                        lag_idx=0,
+                        lag_tau=0,
                         learning_rate=0.01, 
                         load_model_filename=None,
                         save_model_every_step=10, 
@@ -307,6 +307,10 @@ class EigenFunctionTask(TrainingTask):
         self._alpha = alpha
         self._sort_eigvals_in_training = sort_eigvals_in_training
         self._eig_w = eig_weights
+
+        self.traj_dt = traj_obj.trajectory.dt 
+        lag_idx = lag_tau / self.traj_dt
+        assert abs(lag_idx, int(lag_idx)) < 1e-6, f'lag-time ({lag_tau}) not divisable by the timestep {self.traj_dt} of the trajectory'
         self.lag_idx = lag_idx
 
         # list of (i,j) pairs in the penalty term
@@ -400,7 +404,7 @@ class EigenFunctionTask(TrainingTask):
         if self.lag_idx == 0 :
             non_penalty_loss = 1.0 / (tot_weight * self._beta) * sum([self._eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.k)])
         else :
-            non_penalty_loss = 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list[cvec[idx]] + var_list_lagged[cvec[idx]]) for idx in range(self.k)])
+            non_penalty_loss = 1.0 / (1e-3 * self.traj_dt * self.lag_idx) * 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list[cvec[idx]] + var_list_lagged[cvec[idx]]) for idx in range(self.k)])
 
         penalty = torch.zeros(1, requires_grad=True)
 
@@ -682,8 +686,8 @@ class RegAutoEncoderTask(TrainingTask):
         alpha (float): weight of the reconstruction loss
         gamma (list of floats length of 2): weights in the regularization loss involving eigenfunctions
         eta (list of floats, length of 3): weights in the regularization loss, related to constraints on the (squared, integrated) gradient norm, the norm, and the orthogonality of the encoders
-        lag_ae_idx: 'lag time' in the reconstruction loss. Positive number corresponds to time-lagged autoencoder, while 0 for standard autoencoder
-        lag_idx: 'lag time' in the regularization loss involving eigenfunctions. Positive number corresponds to transfer operator, while 0 corresponds to generator
+        lag_tau_ae (float): 'lag time' (in ps) in the reconstruction loss. Positive number corresponds to time-lagged autoencoder, while 0 for standard autoencoder
+        lag_tau_reg (float): 'lag time' (in ps) in the regularization loss involving eigenfunctions. Positive number corresponds to transfer operator, while 0 corresponds to generator
         beta (float): inverse of temperature, only relevant when the regularization loss corresponds to generator (i.e. lag_idx=0)
         device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
         plot_class: plot callback class
@@ -712,8 +716,8 @@ class RegAutoEncoderTask(TrainingTask):
                         alpha=1.0, 
                         gamma=[0.0, 0.0], 
                         eta=[0.0, 0.0, 0.0],
-                        lag_ae_idx=0,
-                        lag_idx=0,
+                        lag_tau_ae=0,
+                        lag_tau_reg=0,
                         beta=1.0,
                         device= torch.device('cpu'),
                         plot_class=None,
@@ -730,8 +734,7 @@ class RegAutoEncoderTask(TrainingTask):
         #--- prepare the data ---
         self._weights = torch.tensor(traj_obj.weights).to(dtype=torch.get_default_dtype())
         self._feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory).to(dtype=torch.get_default_dtype()))
-        self.lag_idx = lag_idx
-        self.lag_ae_idx = lag_ae_idx
+
         self.alpha = alpha
         self.gamma = gamma
         self.eta = eta
@@ -740,6 +743,16 @@ class RegAutoEncoderTask(TrainingTask):
         self._eps = 1e-5
         self._eig_w = eig_weights
         self._cvec = None
+
+        self.traj_dt = traj_obj.trajectory.dt 
+
+        lag_ae_idx = lag_tau_ae / self.traj_dt
+        lag_idx = lag_tau_reg / self.traj_dt
+
+        assert abs(lag_ae_idx, int(lag_ae_idx)) < 1e-6 and abs(lag_idx, int(lag_idx)) < 1e-6, f'lag-times ({lag_tau_ae}, {lag_tau_reg}) not divisable by the timestep {self.traj_dt} of the trajectory'
+
+        self.lag_ae_idx = lag_ae_idx
+        self.lag_idx = lag_idx
 
         # list of (i,j) pairs in the penalty term
         if self.gamma[0] + self.gamma[1] > self._eps :
@@ -854,7 +867,7 @@ class RegAutoEncoderTask(TrainingTask):
             # Compute Rayleigh quotients as eigenvalues
             eig_vals = torch.tensor([1.0 / (tot_weight * self._beta) * torch.sum((y_grad_vec[:,:,idx]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[idx] for idx in range(self.num_reg)]).to(dtype=torch.get_default_dtype())
         else :
-            eig_vals = torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / (var_list_lagged[idx] + var_list[idx]) for idx in range(self.num_reg)])
+            eig_vals = 1.0 / (1e-3 * self.traj_dt * self.lag_idx) * torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / (var_list_lagged[idx] + var_list[idx]) for idx in range(self.num_reg)])
 
         cvec = np.argsort(eig_vals)
         # Sort the eigenvalues 
@@ -863,7 +876,7 @@ class RegAutoEncoderTask(TrainingTask):
         if self.lag_idx == 0 :
             non_penalty_loss = 1.0 / (tot_weight * self._beta) * sum([self._eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.num_reg)])
         else :
-            non_penalty_loss = 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list[cvec[idx]] + var_list[cvec[idx]]) for idx in range(self.num_reg)])
+            non_penalty_loss = 1.0 / (1e-3 * self.traj_dt * self.lag_idx) * 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list_lagged[cvec[idx]] + var_list[cvec[idx]]) for idx in range(self.num_reg)])
 
         # Sum of squares of variance for each eigenfunction
         penalty = sum([(var_list[idx] - 1.0)**2 for idx in range(self.num_reg)])
