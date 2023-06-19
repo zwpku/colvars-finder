@@ -431,23 +431,26 @@ class EigenFunctionTask(TrainingTask):
         # split the dataset into a training set (and its associated weights) and a test set
         X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._traj[:ll,:], self._weights[:ll], torch.arange(ll, dtype=torch.long), test_size=self.test_ratio)  
 
+        bs_train = min(self.batch_size, X_train.shape[0])
         # method to construct data batches and iterate over them
         train_loader = torch.utils.data.DataLoader(dataset=torch.utils.data.TensorDataset(X_train, w_train, index_train),
-                                                   batch_size=self.batch_size,
+                                                   batch_size=bs_train,
                                                    drop_last=True,
                                                    shuffle=False)
+
+        bs_test = min(self.batch_size, X_test.shape[0])
         test_loader  = torch.utils.data.DataLoader(dataset=torch.utils.data.TensorDataset(X_test, w_test, index_test),
-                                                   batch_size=self.batch_size,
+                                                   batch_size=bs_test,
                                                    drop_last=True,
                                                    shuffle=False)
         
-        assert len(train_loader) > 0 and len(test_loader) > 0, 'DataLoader is empty, possibly because batch size is too large comparing to trajectory data!'
+        # assert len(train_loader) > 0 and len(test_loader) > 0, 'DataLoader is empty, possibly because batch size is too large comparing to trajectory data!'
 
         # --- start the training over the required number of epochs ---
         self.loss_list = []
         min_loss = float("inf") 
 
-        print ("\nTraining starts.\n%d epochs in total, batch size: %d" % (self.num_epochs, self.batch_size)) 
+        print ("\nTraining starts.\n%d epochs in total, batch sizes (train/test): %d/%d" % (self.num_epochs, bs_train, bs_test)) 
         print ("\nTrain set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_train), len(train_loader), len(train_loader) * self.num_epochs), flush=True)
         print ("Test set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_test), len(test_loader), len(test_loader) * self.num_epochs), flush=True)
 
@@ -602,13 +605,16 @@ class AutoEncoderTask(TrainingTask):
         # split the dataset into a training set (and its associated weights) and a test set
         X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj, self._weights, torch.arange(self._feature_traj.shape[0], dtype=torch.long), test_size=self.test_ratio)  
 
+        bs_train = min(self.batch_size, X_train.shape[0])
         # method to construct data batches and iterate over them
         train_loader = torch.utils.data.DataLoader(dataset = torch.utils.data.TensorDataset(X_train, w_train, index_train),
-                                                   batch_size=self.batch_size,
+                                                   batch_size=bs_train,
                                                    drop_last=True,
                                                    shuffle=False)
+
+        bs_test = min(self.batch_size, X_test.shape[0])
         test_loader  = torch.utils.data.DataLoader(dataset= torch.utils.data.TensorDataset(X_test, w_test, index_test),
-                                                   batch_size=self.batch_size,
+                                                   batch_size=bs_test,
                                                    drop_last=True,
                                                    shuffle=False)
 
@@ -616,7 +622,7 @@ class AutoEncoderTask(TrainingTask):
         self.loss_list = []
         min_loss = float("inf") 
 
-        print ("\nTraining starts.\n%d epochs in total, batch size: %d" % (self.num_epochs, self.batch_size)) 
+        print ("\nTraining starts.\n%d epochs in total, batch sizes (train/test): %d/%d" % (self.num_epochs, bs_train, bs_test)) 
         print ("\nTrain set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_train), len(train_loader), len(train_loader) * self.num_epochs), flush=True)
         print ("Test set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_test), len(test_loader), len(test_loader) * self.num_epochs), flush=True)
 
@@ -722,6 +728,7 @@ class RegAutoEncoderTask(TrainingTask):
                         device= torch.device('cpu'),
                         plot_class=None,
                         plot_frequency=0, 
+                        freeze_encoder_in_reg_loss=False,
                         verbose=True,
                         debug_mode=True):
 
@@ -743,6 +750,7 @@ class RegAutoEncoderTask(TrainingTask):
         self._eps = 1e-5
         self._eig_w = eig_weights
         self._cvec = None
+        self.freeze_encoder_in_reg_loss = freeze_encoder_in_reg_loss
 
         self.traj_dt = traj_obj.trajectory.dt 
 
@@ -896,13 +904,16 @@ class RegAutoEncoderTask(TrainingTask):
 
         X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj[:ll, :], self._weights[:ll], torch.arange(ll, dtype=torch.long), test_size=self.test_ratio)  
 
+        bs_train = min(self.batch_size, X_train.shape[0])
         # method to construct data batches and iterate over them
         train_loader = torch.utils.data.DataLoader(dataset = torch.utils.data.TensorDataset(X_train, w_train, index_train),
-                                                   batch_size=self.batch_size,
+                                                   batch_size=bs_train,
                                                    drop_last=True,
                                                    shuffle=False)
+
+        bs_test = min(self.batch_size, X_test.shape[0])
         test_loader  = torch.utils.data.DataLoader(dataset= torch.utils.data.TensorDataset(X_test, w_test, index_test),
-                                                   batch_size=self.batch_size,
+                                                   batch_size=bs_test,
                                                    drop_last=True,
                                                    shuffle=False)
 
@@ -910,7 +921,7 @@ class RegAutoEncoderTask(TrainingTask):
         self.loss_list = []
         min_loss = float("inf") 
 
-        print ("\nTraining starts.\n%d epochs in total, batch size: %d" % (self.num_epochs, self.batch_size)) 
+        print ("\nTraining starts.\n%d epochs in total, batch sizes (train/test): %d/%d" % (self.num_epochs, bs_train, bs_test)) 
         print ("\nTrain set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_train), len(train_loader), len(train_loader) * self.num_epochs), flush=True)
         print ("Test set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_test), len(test_loader), len(test_loader) * self.num_epochs), flush=True)
 
@@ -927,26 +938,15 @@ class RegAutoEncoderTask(TrainingTask):
 
                 # Evaluate loss
 
-                if self.lag_ae_idx > 0 :
-                    X_lagged = self._feature_traj[index+self.lag_ae_idx].to(self.device)
-                else :
-                    X_lagged = X
-
-                ae_loss = self.weighted_MSE_loss(X, X_lagged, weight) 
-
-                if self.gamma[0] + self.gamma[1] > self._eps :
-                    if self.lag_idx > 0 :
-                        X_lagged = self._feature_traj[index+self.lag_idx]
-                        weight_lagged = self._weights[index + self.lag_idx]
+                if self.alpha > self._eps :
+                    if self.lag_ae_idx > 0 :
+                        X_lagged = self._feature_traj[index+self.lag_ae_idx].to(self.device)
                     else :
-                        X_lagged = None
-                        weight_lagged = None
+                        X_lagged = X
 
-                    eig_vals, reg_eigen_loss_0, reg_eigen_loss_1, self._cvec = self.reg_eigen_loss(X, weight, X_lagged, weight_lagged)
+                    ae_loss = self.weighted_MSE_loss(X, X_lagged, weight) 
                 else :
-                    reg_eigen_loss_0 = 0 
-                    reg_eigen_loss_1 = 0
-                    eig_vals = np.zeros(self.num_reg)
+                    ae_loss = 0.0
 
                 if self.eta[0]  > self._eps :
                     reg_enc_loss_0 = self.reg_enc_grad_loss(X, weight)
@@ -963,11 +963,35 @@ class RegAutoEncoderTask(TrainingTask):
                 else :
                     reg_enc_loss_2 = 0.0
 
+                if self.gamma[0] + self.gamma[1] > self._eps :
+
+                    if self.freeze_encoder_in_reg_loss is True :
+                        for param in self.model.encoder.parameters():
+                            param.requires_grad = False
+
+                    if self.lag_idx > 0 :
+                        X_lagged = self._feature_traj[index+self.lag_idx]
+                        weight_lagged = self._weights[index + self.lag_idx]
+                    else :
+                        X_lagged = None
+                        weight_lagged = None
+
+                    eig_vals, reg_eigen_loss_0, reg_eigen_loss_1, self._cvec = self.reg_eigen_loss(X, weight, X_lagged, weight_lagged)
+                else :
+                    reg_eigen_loss_0 = 0 
+                    reg_eigen_loss_1 = 0
+                    eig_vals = np.zeros(self.num_reg)
+
                 loss = self.alpha * ae_loss + self.gamma[0] * reg_eigen_loss_0 + self.gamma[1] * reg_eigen_loss_1 \
                         + self.eta[0] * reg_enc_loss_0 + self.eta[1] * reg_enc_loss_1 + self.eta[2] * reg_enc_loss_2
 
                 # Get gradient with respect to parameters of the model
                 loss.backward()
+
+                if self.freeze_encoder_in_reg_loss is True :
+                    for param in self.model.encoder.parameters():
+                        param.requires_grad = True
+
                 # Store loss
                 train_loss.append([loss, ae_loss, reg_eigen_loss_0, reg_eigen_loss_1] \
                             + [eig_vals[i] for i in range(self.num_reg)] + [reg_enc_loss_0, reg_enc_loss_1, reg_enc_loss_2])
@@ -991,12 +1015,15 @@ class RegAutoEncoderTask(TrainingTask):
                 X, weight, index = X.to(self.device), weight.to(self.device), index.to(self.device)
                 # Evaluate loss
 
-                if self.lag_ae_idx > 0 :
-                    X_lagged = self._feature_traj[index+self.lag_ae_idx].to(self.device)
-                else :
-                    X_lagged = X
+                if self.alpha > self._eps :
+                    if self.lag_ae_idx > 0 :
+                        X_lagged = self._feature_traj[index+self.lag_ae_idx].to(self.device)
+                    else :
+                        X_lagged = X
 
-                ae_loss = self.weighted_MSE_loss(X, X_lagged, weight) 
+                    ae_loss = self.weighted_MSE_loss(X, X_lagged, weight) 
+                else :
+                    ae_loss = 0 
 
                 if self.gamma[0] + self.gamma[1] > self._eps :
                     if self.lag_idx > 0 :
@@ -1039,6 +1066,7 @@ class RegAutoEncoderTask(TrainingTask):
             loss_names = ['loss', 'ae_loss', 'eigen_non_penalty', 'eigen_penalty'] \
                             + ['eig_%d' % i for i in range(self.num_reg)] \
                             + ['encoder_gradient', 'encoder_norm', 'encoder_orthogonality']
+
             mean_train_loss = torch.mean(torch.tensor(train_loss), 0)
             mean_test_loss = torch.mean(torch.tensor(test_loss), 0)
             for i, name in enumerate(loss_names):
