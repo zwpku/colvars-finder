@@ -308,10 +308,10 @@ class EigenFunctionTask(TrainingTask):
         self._sort_eigvals_in_training = sort_eigvals_in_training
         self._eig_w = eig_weights
 
-        self.traj_dt = traj_obj.trajectory.dt 
+        self.traj_dt = traj_obj.dt 
         lag_idx = lag_tau / self.traj_dt
-        assert abs(lag_idx, int(lag_idx)) < 1e-6, f'lag-time ({lag_tau}) not divisable by the timestep {self.traj_dt} of the trajectory'
-        self.lag_idx = lag_idx
+        assert abs(lag_idx-int(lag_idx)) < 1e-6, f'lag-time ({lag_tau}) not divisable by the timestep {self.traj_dt} of the trajectory'
+        self.lag_idx = int(lag_idx)
 
         # list of (i,j) pairs in the penalty term
         self._ij_list = list(itertools.combinations(range(self.k), 2))
@@ -752,15 +752,15 @@ class RegAutoEncoderTask(TrainingTask):
         self._cvec = None
         self.freeze_encoder_in_reg_loss = freeze_encoder_in_reg_loss
 
-        self.traj_dt = traj_obj.trajectory.dt 
+        self.traj_dt = traj_obj.dt 
 
         lag_ae_idx = lag_tau_ae / self.traj_dt
         lag_idx = lag_tau_reg / self.traj_dt
 
-        assert abs(lag_ae_idx, int(lag_ae_idx)) < 1e-6 and abs(lag_idx, int(lag_idx)) < 1e-6, f'lag-times ({lag_tau_ae}, {lag_tau_reg}) not divisable by the timestep {self.traj_dt} of the trajectory'
+        assert abs(lag_ae_idx-int(lag_ae_idx)) < 1e-6 and abs(lag_idx-int(lag_idx)) < 1e-6, f'lag-times ({lag_tau_ae}, {lag_tau_reg}) not divisable by the timestep {self.traj_dt} of the trajectory'
 
-        self.lag_ae_idx = lag_ae_idx
-        self.lag_idx = lag_idx
+        self.lag_ae_idx = int(lag_ae_idx)
+        self.lag_idx = int(lag_idx)
 
         # list of (i,j) pairs in the penalty term
         if self.gamma[0] + self.gamma[1] > self._eps :
