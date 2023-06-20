@@ -458,6 +458,7 @@ class EigenFunctionTask(TrainingTask):
             # Train the model by going through the whole dataset
             self.model.train()
             train_loss = []
+
             for iteration, [X, weight, index] in enumerate(train_loader) :
 
                 X, weight, index = X.to(self.device), weight.to(self.device), index.to(self.device)
@@ -479,6 +480,7 @@ class EigenFunctionTask(TrainingTask):
                 loss.backward(retain_graph=True)
                 # Store loss
                 train_loss.append([loss, non_penalty_loss, penalty] + [eig_vals[i] for i in range(self.k)])
+
                 # Updating parameters
                 self.optimizer.step()
 
@@ -494,8 +496,6 @@ class EigenFunctionTask(TrainingTask):
 
             # Evaluate the test loss on the test dataset
             test_loss = []
-            test_eig_vals = []
-            test_penalty = []
             for iteration, [X, weight, index] in enumerate(test_loader):
 
                 X, weight, index = X.to(self.device), weight.to(self.device), index.to(self.device)
@@ -511,18 +511,17 @@ class EigenFunctionTask(TrainingTask):
 
                 loss, eig_vals, non_penalty_loss, penalty, cvec = self.loss_func(X, weight, X_lagged, weight_lagged)
                 # Store loss
-                test_eig_vals.append(eig_vals)
-                test_penalty.append(penalty)
                 test_loss.append([loss, non_penalty_loss, penalty] + [eig_vals[i] for i in range(self.k)])
 
             self.loss_list.append([torch.tensor(train_loss), torch.tensor(test_loss)])
                 
-            self.writer.add_scalar('Loss/train', torch.mean(torch.tensor(train_loss)), epoch)
-            self.writer.add_scalar('Loss/test', torch.mean(torch.tensor(test_loss)), epoch)
-            self.writer.add_scalar('penalty', torch.mean(torch.tensor(test_penalty)), epoch)
+            loss_names = ['loss', 'eigen_non_penalty', 'eigen_penalty'] + ['eig_%d' % (i+1) for i in range(self.k)] 
 
-            for idx in range(self.k):
-                self.writer.add_scalar(f'{idx}th eigenvalue', torch.mean(torch.stack(test_eig_vals)[:,idx]), epoch)
+            mean_train_loss = torch.mean(torch.tensor(train_loss), 0)
+            mean_test_loss = torch.mean(torch.tensor(test_loss), 0)
+            for i, name in enumerate(loss_names):
+                self.writer.add_scalar('%s/train' % name, mean_train_loss[i], epoch)
+                self.writer.add_scalar('%s/test' % name, mean_test_loss[i], epoch)
 
 # Task to solve autoencoder
 class AutoEncoderTask(TrainingTask):
@@ -668,7 +667,7 @@ class AutoEncoderTask(TrainingTask):
                     # Store loss
                     test_loss.append(loss)
                 self.loss_list.append([torch.tensor(train_loss), torch.tensor(test_loss)])
-                
+
             self.writer.add_scalar('Loss/train', torch.mean(torch.tensor(train_loss)), epoch)
             self.writer.add_scalar('Loss/test', torch.mean(torch.tensor(test_loss)), epoch)
 
