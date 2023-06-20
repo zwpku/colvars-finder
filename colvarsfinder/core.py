@@ -253,7 +253,7 @@ class EigenFunctionTask(TrainingTask):
         model (:class:`colvarsfinder.nn.EigenFunctions`): feedforward neural network to be trained. It corresponds to :math:`g_1, \dots, g_k` in :ref:`loss_eigenfunction` 
         model_path (str): directory to save training results
         beta (float): the value of :math:`(k_BT)^{-1}`
-        lag_idx (int): 'lag time' in the loss function. Positive integer corresponds to transfer operator, while 0 corresponds to generator.
+        lag_tau (float): 'lag time' (ps) in the loss function. Positive value corresponds to transfer operator, while 0 corresponds to generator.
         diag_coeff (:external+pytorch:class:`torch.Tensor`): 1D PyTorch tensor of length :math:`d`, which contains the diagonal entries of the matrix :math:`a` in the :ref:`loss_eigenfunction`
         alpha (float): penalty constant :math:`\alpha` in the loss function
         eig_weights (list of floats): :math:`k` weights :math:`\omega_1 > \omega_2 > \dots > \omega_k > 0` in the loss functions in :ref:`loss_eigenfunction`
@@ -393,7 +393,7 @@ class EigenFunctionTask(TrainingTask):
             # Compute Rayleigh quotients as eigenvalues
             eig_vals = torch.tensor([1.0 / (tot_weight * self._beta) * torch.sum((y_grad_vec[:,:,idx]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[idx] for idx in range(self.k)]).to(dtype=torch.get_default_dtype())
         else :
-            eig_vals = torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / (var_list[idx] + var_list_lagged[idx]) for idx in range(self.k)])
+            eig_vals = 1.0 / (1e-3 * self.traj_dt * self.lag_idx) * torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / (var_list[idx] + var_list_lagged[idx]) for idx in range(self.k)])
 
         cvec = range(self.k)
         if self._sort_eigvals_in_training :
