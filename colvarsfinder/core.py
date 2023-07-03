@@ -307,6 +307,7 @@ class EigenFunctionTask(TrainingTask):
         self._alpha = alpha
         self._sort_eigvals_in_training = sort_eigvals_in_training
         self._eig_w = eig_weights
+        self._cvec = None
 
         self.traj_dt = traj_obj.dt 
         lag_idx = lag_tau / self.traj_dt
@@ -359,6 +360,9 @@ class EigenFunctionTask(TrainingTask):
                 built from :attr:`preprocessing_layer` that represents :math:`r` and :attr:`model` that represents :math:`g_1, g_2,
                 \cdots, g_k`. See :ref:`loss_eigenfunction`.
         """
+        if self._cvec is None :
+            self._cvec = torch.arange(self.k)
+
         reordered_model = self.get_reordered_eigenfunctions(self.model, self._cvec)
         return torch.nn.Sequential(self.preprocessing_layer, reordered_model)
 
