@@ -151,7 +151,7 @@ class TrainingTask(ABC):
 
         if self.load_model_filename :
             if os.path.isfile(self.load_model_filename): 
-                self.model.load_state_dict(torch.load(self.load_model_filename, map_location=self.device))
+                self.model.load_state_dict(torch.load(self.load_model_filename, map_location=self.device), strict=False)
                 if self.verbose: print (f'model parameters loaded from: {self.load_model_filename}')
             else :
                 if self.verbose: print (f'model file not found: {self.load_model_filename}')
@@ -731,7 +731,7 @@ class RegAutoEncoderTask(TrainingTask):
                         device= torch.device('cpu'),
                         plot_class=None,
                         plot_frequency=0, 
-                        freeze_encoder_in_reg_loss=False,
+                        freeze_encoder=False,
                         verbose=True,
                         debug_mode=True):
 
@@ -753,7 +753,7 @@ class RegAutoEncoderTask(TrainingTask):
         self._eps = 1e-5
         self._eig_w = eig_weights
         self._cvec = None
-        self.freeze_encoder_in_reg_loss = freeze_encoder_in_reg_loss
+        self.freeze_encoder = freeze_encoder
 
         self.traj_dt = traj_obj.dt 
 
@@ -941,6 +941,10 @@ class RegAutoEncoderTask(TrainingTask):
 
                 # Evaluate loss
 
+                if self.freeze_encoder is True :
+                    for param in self.model.encoder.parameters():
+                        param.requires_grad = False
+
                 if self.alpha > self._eps :
                     if self.lag_ae_idx > 0 :
                         X_lagged = self._feature_traj[index+self.lag_ae_idx].to(self.device)
@@ -968,9 +972,6 @@ class RegAutoEncoderTask(TrainingTask):
 
                 if self.gamma[0] + self.gamma[1] > self._eps :
 
-                    if self.freeze_encoder_in_reg_loss is True :
-                        for param in self.model.encoder.parameters():
-                            param.requires_grad = False
 
                     if self.lag_idx > 0 :
                         X_lagged = self._feature_traj[index+self.lag_idx]
@@ -991,7 +992,7 @@ class RegAutoEncoderTask(TrainingTask):
                 # Get gradient with respect to parameters of the model
                 loss.backward()
 
-                if self.freeze_encoder_in_reg_loss is True :
+                if self.freeze_encoder is True :
                     for param in self.model.encoder.parameters():
                         param.requires_grad = True
 
