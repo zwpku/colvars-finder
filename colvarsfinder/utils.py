@@ -99,9 +99,9 @@ class WeightedTrajectory:
             if verbose: print ('\nloading trajectory to numpy array...', end='') 
 
             if input_ag is None :
-                input_atom_indices = univser.atoms.ids - 1
+                input_atom_indices = univser.atoms.ix
             else :
-                input_atom_indices = input_ag.ids - 1
+                input_atom_indices = input_ag.ix
 
             # load trajectory 
             self.trajectory = universe.trajectory.timeseries(order='fac')[:,input_atom_indices,:]
