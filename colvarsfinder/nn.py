@@ -204,6 +204,7 @@ class RegAutoEncoder(torch.nn.Module):
 
 class RegModel(torch.nn.Module):
     r"""Neural network representing the eigenfunctions built from a :class:`RegAutoEncoder`.
+
     Args:
         reg_ae (:class:`RegAutoEncoder`): an object of class :class:`RegAutoEncoder`
         cvec (list of int): order of regularizers 

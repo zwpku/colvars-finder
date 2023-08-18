@@ -10,7 +10,7 @@ The following training tasks derived from the base class :class:`TrainingTask` a
 
     #. :class:`AutoEncoderTask`, which finds collective variables by training autoencoder.
     #. :class:`RegAutoEncoderTask`, which finds collective variables by training a regularized autoencoder.
-    #. :class:`EigenFunctionTask`, which finds collective variables by computing eigenfunctions.
+    #. :class:`EigenFunctionTask`, which finds collective variables by computing eigenfunctions of either infinitesimal generator or transfer operator.
 
 See :ref:`math_backgrounds`.
 
@@ -58,11 +58,12 @@ from colvarsfinder.nn import RegModel
 from openmm import unit
 
 class TrainingTask(ABC):
-    r"""Abstract base class of train tasks. A training task should be based on this class.
+    r"""Abstract base class of train tasks. 
 
     Args:
-        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): An object that holds trajectory data and weights
-        pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing layer. It corresponds to the function :math:`r` in :ref:`rep_colvars`
+        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): An object that holds trajectory data 
+        pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing
+        layer. It corresponds to the function :math:`r` described in :ref:`rep_colvars`
         model : neural network to be trained
         model_path (str): directory to save training results
         learning_rate (float): learning rate
@@ -74,26 +75,30 @@ class TrainingTask(ABC):
         test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data
         optimizer_name (str): name of optimizer used to train neural networks. either 'Adam' or 'SGD'
         device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
+        plot_class: plot callback class
+        plot_frequency: how often (epoch) to call plot function specified by plot_class
         verbose (bool): print more information if true
+        debug_mode (bool): if true, write model to file during the training
 
     Attributes:
-        traj_obj: the same as the input parameter
-        preprocessing_layer: the same as the input parameter pp_layer
-        model: the same as the input parameter
-        model_path : the same as the input parameter
-        learning_rate: the same as the input parameter
-        load_model_filename: the same as the input parameter
-        save_model_every_step : the same as the input parameter
-        k: the same as the input parameter
-        batch_size: the same as the input parameter
-        num_epochs: the same as the input parameter
-        test_ratio: the same as the input parameter
-        optimizer_name: the same as the input parameter
+        traj_obj: same as the input parameter
+        preprocessing_layer: same as the input parameter pp_layer
+        model: same as the input parameter
+        model_path : same as the input parameter
+        learning_rate: same as the input parameter
+        load_model_filename: same as the input parameter
+        save_model_every_step : same as the input parameter
+        k: same as the input parameter
+        batch_size: same as the input parameter
+        num_epochs: same as the input parameter
+        test_ratio: same as the input parameter
+        optimizer_name: same as the input parameter
         optimizer: either :external+pytorch:class:`torch.optim.Adam` or :external+pytorch:class:`torch.optim.SGD`
-        device: the same as the input parameter
-        plot_class: plot callback class
-        plot_frequency: how often (epoch) to call plot function 
-        verbose (bool): print more information if true
+        device: same as the input parameter
+        plot_class: same as the input parameter 
+        plot_frequency: same as the input parameter 
+        verbose: same as the input parameter
+        debug_mode: same as the input parameter
     """
     def __init__(self, 
                     traj_obj, 
@@ -144,7 +149,7 @@ class TrainingTask(ABC):
         The previously saved model will be loaded for initialization, if :attr:`load_model_filename` points to an existing file.
 
         The attribute :attr:`optimizer` is set to
-        :external+pytorch:class:`torch.optim.Adam`, if :attr:`optimizer_name` = 'Adam'; Otherwise, it is set to :external+pytorch:class:`torch.optim.SGD`.
+        :external+pytorch:class:`torch.optim.Adam`, if :attr:`optimizer_name` = 'Adam' (case-insensitive); Otherwise, it is set to :external+pytorch:class:`torch.optim.SGD`.
 
         This function shall be called in the constructor of derived classes.
         """
@@ -156,7 +161,7 @@ class TrainingTask(ABC):
             else :
                 if self.verbose: print (f'model file not found: {self.load_model_filename}')
 
-        if self.optimizer_name == 'Adam':
+        if self.optimizer_name.lower() == 'adam':
             self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         else:
             self.optimizer = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
@@ -168,10 +173,10 @@ class TrainingTask(ABC):
             epoch (int): current epoch
             description (str): name of subdirectory to save files
 
-        The state_dict of the trained :attr:`model` will be saved at `model.pt` under the subdirectory specified by *description* of the output directory. 
-        The weights and biases of each layer are also saved in text files. 
+        The state_dict of the trained :attr:`model` will be saved at `model.pt` under the subdirectory specified by *description* in the output directory. 
+        Weights and biases of each layer are also saved in text files. 
 
-        The neural network representing collective variables corresponding to :attr:`model` is first constructed by calling :meth:`colvar_model`, then compiled to a :external+pytorch:class:`torch.jit.ScriptModule`, which is finally saved under the output directory. If the device is GPU, both CPU and CUDA versions will be saved.
+        The neural network representing collective variables corresponding to :attr:`model` (e.g. encoder part of autoencoder) is first constructed by calling :meth:`colvar_model`, then compiled to a :external+pytorch:class:`torch.jit.ScriptModule`, which is finally saved under the output directory. If the device is GPU, both CPU and CUDA versions will be saved.
 
         This function is called by :meth:`train`.
 
@@ -273,7 +278,7 @@ class EigenFunctionTask(TrainingTask):
 
     Attributes:
         model: the same as the input parameter
-        loss_list: list of loss values on training data and test data during the training
+        loss_list: list of loss values evaluated on training data and test data during the training
     """
 
     def __init__(self, traj_obj, 
@@ -527,13 +532,14 @@ class EigenFunctionTask(TrainingTask):
                 self.writer.add_scalar('%s/train' % name, mean_train_loss[i], epoch)
                 self.writer.add_scalar('%s/test' % name, mean_test_loss[i], epoch)
 
-# Task to solve autoencoder
 class AutoEncoderTask(TrainingTask):
     r"""Training task for autoencoder.
 
     Args:
-        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): trajectory data with weights
-        pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing layer. It corresponds to the function :math:`r:\mathbb{R}^{d}\rightarrow \mathbb{R}^{d_r}` in :ref:`rep_colvars`
+        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): trajectory data 
+        pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing
+        layer. It corresponds to the function
+        :math:`r:\mathbb{R}^{d}\rightarrow \mathbb{R}^{d_r}` described in :ref:`rep_colvars`
         model (:class:`colvarsfinder.nn.AutoEncoder`): neural network to be trained
         model_path (str): directory to save training results
         learning_rate (float): learning rate
@@ -547,12 +553,22 @@ class AutoEncoderTask(TrainingTask):
         plot_class: plot callback class
         plot_frequency: how often (epoch) to call plot function 
         verbose (bool): print more information if true
+        debug_mode (bool): if true, write model to file during the training
         
-    This task trains autoencoder using the loss discussed in :ref:`loss_autoencoder`. The neural networks representing the encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and the decoder :math:`f_{enc}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` are stored in :attr:`model.encoder` and :attr:`model.decoder`, respectively.
+    This task trains autoencoders using the standard reconstruction loss discussed in :ref:`loss_autoencoder`. The neural networks representing the encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and the decoder :math:`f_{enc}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` are stored in :attr:`model.encoder` and :attr:`model.decoder`, respectively.
+
+    .. note::
+
+        plot_class is an object of a class, which has a member function: plot(cv_model, epoch), where cv_model is :external+pytorch:class:`torch.nn.Module`, epoch is an integer. 
+        When plot_class!=None, this plot function will be called in meth:`AutoEncoderTask.train()` as follows:
+
+    .. code-block:: python
+
+            self.plot_class.plot(self.colvar_model(), epoch=epoch)
 
     Attributes:
-        model: the same as the input parameter
-        preprocessing_layer: the same as the input parameter pp_layer
+        model: same as the input parameter
+        preprocessing_layer: same as the input parameter pp_layer
         loss_list: list of loss values on training data and test data during the training
 
     """
@@ -587,7 +603,7 @@ class AutoEncoderTask(TrainingTask):
     def colvar_model(self):
         r"""
         Return:
-            :external+pytorch:class:`torch.nn.Module`: neural network that represents collective variables :math:`\xi=f_{enc}\circ g`, given the :attr:`preprocessing_layer` that represents :math:`g` and the encoder :attr:`model.encoder` that represents :math:`f_{enc}`. 
+            :external+pytorch:class:`torch.nn.Module`: neural network that represents collective variables. It is the concatenation of :attr:`preprocessing_layer` and :attr:`model.encoder`.
 
         This function is called by :meth:`TrainingTask.save_model` in the base class.
         """
