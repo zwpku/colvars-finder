@@ -62,8 +62,7 @@ class TrainingTask(ABC):
 
     Args:
         traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): An object that holds trajectory data 
-        pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing
-        layer. It corresponds to the function :math:`r` described in :ref:`rep_colvars`
+        pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing layer. It corresponds to the function :math:`r` described in :ref:`rep_colvars`
         model : neural network to be trained
         model_path (str): directory to save training results
         learning_rate (float): learning rate
@@ -537,9 +536,7 @@ class AutoEncoderTask(TrainingTask):
 
     Args:
         traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): trajectory data 
-        pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing
-        layer. It corresponds to the function
-        :math:`r:\mathbb{R}^{d}\rightarrow \mathbb{R}^{d_r}` described in :ref:`rep_colvars`
+        pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing layer. It corresponds to the function :math:`r:\mathbb{R}^{d}\rightarrow \mathbb{R}^{d_r}` described in :ref:`rep_colvars`
         model (:class:`colvarsfinder.nn.AutoEncoder`): neural network to be trained
         model_path (str): directory to save training results
         learning_rate (float): learning rate
@@ -559,12 +556,13 @@ class AutoEncoderTask(TrainingTask):
 
     .. note::
 
-        plot_class is an object of a class, which has a member function: plot(cv_model, epoch), where cv_model is :external+pytorch:class:`torch.nn.Module`, epoch is an integer. 
-        When plot_class!=None, this plot function will be called in meth:`AutoEncoderTask.train()` as follows:
+        When plot_class!=None, the following line is executed in meth:`AutoEncoderTask.train()`:
 
-    .. code-block:: python
+        .. code-block:: python
 
-            self.plot_class.plot(self.colvar_model(), epoch=epoch)
+                self.plot_class.plot(self.colvar_model(), epoch=epoch)
+
+        Accordingly, plot_class should be an object of a class that implements such a member function. 
 
     Attributes:
         model: same as the input parameter
