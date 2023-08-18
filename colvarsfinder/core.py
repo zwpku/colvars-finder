@@ -556,7 +556,7 @@ class AutoEncoderTask(TrainingTask):
 
     .. note::
 
-        When plot_class!=None, the following line is executed in meth:`AutoEncoderTask.train`:
+        When plot_class!=None, the following line is executed in :meth:`AutoEncoderTask.train`:
 
         .. code-block:: python
 
@@ -611,6 +611,16 @@ class AutoEncoderTask(TrainingTask):
         return None
 
     def weighted_MSE_loss(self, X, weight):
+        r"""
+        Args:
+            X: input PyTorch tensor
+            weight: weights of data 
+
+        Return: 
+            reconstruction (MSE) loss of autoencoder
+
+        """
+
         # Forward pass to get output
         out = self.model(X)
         # Evaluate loss
@@ -726,7 +736,7 @@ class RegAutoEncoderTask(TrainingTask):
 
     .. note::
 
-        make sure that lag_tau_ae= :math:`i\Delta t` and lag_tau_reg =:math:`j\Delta t` for some integers :math:`i,j`, where :math:`\Delta t` is the time interval between two adjacent states in the trajectory data stored in traj_obj. For MD systems, the unit of both lag-times is ns, the same as the unit of :attr:`dt` in :class:`colvarsfinder.utils.WeightedTrajectory`.
+        make sure that lag_tau_ae= :math:`i\Delta t` and lag_tau_reg= :math:`j\Delta t` for some integers :math:`i,j`, where :math:`\Delta t` is the time interval between two adjacent states in the trajectory data stored in traj_obj. For MD systems, the unit of both lag-times is ns, the same as the unit of :attr:`dt` in :class:`colvarsfinder.utils.WeightedTrajectory`.
 
     """
     def __init__(self, traj_obj, 
