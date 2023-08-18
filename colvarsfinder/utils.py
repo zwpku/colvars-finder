@@ -90,7 +90,7 @@ class WeightedTrajectory:
             
         n_frames (int): number of states in the trajectory
         weights (1d numpy array): weights of states
-
+        dt (float): time (ps) between two consecutive states 
     """
     def __init__(self, universe=None, input_ag=None, traj_filename=None, weight_filename=None, min_w=0.0, max_w=float("inf"), verbose=True):
         
@@ -99,9 +99,9 @@ class WeightedTrajectory:
             if verbose: print ('\nloading trajectory to numpy array...', end='') 
 
             if input_ag is None :
-                input_atom_indices = univser.atoms.ids - 1
+                input_atom_indices = univser.atoms.ix
             else :
-                input_atom_indices = input_ag.ids - 1
+                input_atom_indices = input_ag.ix
 
             # load trajectory 
             self.trajectory = universe.trajectory.timeseries(order='fac')[:,input_atom_indices,:]
@@ -109,6 +109,9 @@ class WeightedTrajectory:
             if verbose: print ('done.') 
 
             self.n_frames = universe.trajectory.n_frames
+
+            # unit: ps
+            self.dt = universe.trajectory.dt
 
             # print information of trajectory
             if verbose: 
