@@ -5,7 +5,7 @@ r"""Neural Networks --- :mod:`colvarsfinder.nn`
 :Year: 2022
 :Copyright: GNU Public License v3
 
-This module implements PyTorch neural network classes that are used in module :mod:`colvarsfinder.core`.
+This module implements PyTorch neural network classes that represent autoencoders or eigenfunctions. These classes are used in the module :mod:`colvarsfinder.core`.
 
 .. autofunction:: create_sequential_nn
 
@@ -30,7 +30,7 @@ def create_sequential_nn(layer_dims, activation=torch.nn.Tanh()):
 
     :param layer_dims: dimensions of layers 
     :type layer_dims: list of int
-    :param activation: PyTorch non-linear activation function
+    :param activation: PyTorch (nonlinear) activation function
 
     :raises AssertionError: if length of **layer_dims** is not larger than 1.
 

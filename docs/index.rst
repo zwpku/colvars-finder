@@ -10,11 +10,11 @@ This package implements methods for finding collective variables of dynamical sy
 
 .. note::
 
-   The package is under development.
+   This package is under development.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Contents
 
    installation
    quickstart
