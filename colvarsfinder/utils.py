@@ -90,7 +90,7 @@ class WeightedTrajectory:
             
         n_frames (int): number of states in the trajectory
         weights (1d numpy array): weights of states
-        dt (float): time (ps) between two consecutive states 
+        dt (float): time between two consecutive states. The unit is ns for MD systems.
     """
     def __init__(self, universe=None, input_ag=None, traj_filename=None, weight_filename=None, min_w=0.0, max_w=float("inf"), verbose=True):
         

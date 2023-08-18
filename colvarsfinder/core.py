@@ -707,8 +707,8 @@ class RegAutoEncoderTask(TrainingTask):
         alpha (float): weight of the reconstruction loss
         gamma (list of two floats): weights in the regularization loss involving eigenfunctions (i.e. variational objective and penalty)
         eta (list of three floats): weights in the regularization loss, related to constraints on the (squared, integrated) gradient norm, the norm, and the orthogonality of the encoders
-        lag_tau_ae (float): lag-time (in ps) in the reconstruction loss.  Positive number corresponds to time-lagged autoencoder, while zero for standard autoencoder
-        lag_tau_reg (float): 'lag time' (in ps) in the regularization loss involving eigenfunctions. Positive number corresponds to computing eigenfunctions for transfer operator, while zero corresponds to computing eigenfunctions of generator 
+        lag_tau_ae (float): lag-time in the reconstruction loss.  Positive number corresponds to time-lagged autoencoder, while zero for standard autoencoder
+        lag_tau_reg (float): 'lag time' in the regularization loss involving eigenfunctions. Positive number corresponds to computing eigenfunctions for transfer operator, while zero corresponds to computing eigenfunctions of generator 
         beta (float): inverse of temperature, only relevant when the regularization loss corresponds to generator (i.e. lag_tau_reg=0)
         device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
         plot_class: plot callback class
@@ -726,7 +726,7 @@ class RegAutoEncoderTask(TrainingTask):
 
     .. note::
 
-        make sure that lag_tau_ae=:math:`i\Delta t` and lag_tau_reg=:math:`j\Delta t` for some integers :math:`i,j`, where :math:`\Delta t` is the time interval between two adjacent states in the trajectory data stored in traj_obj. 
+        make sure that lag_tau_ae= :math:`i\Delta t` and lag_tau_reg =:math:`j\Delta t` for some integers :math:`i,j`, where :math:`\Delta t` is the time interval between two adjacent states in the trajectory data stored in traj_obj. For MD systems, the unit of both lag-times is ns, the same as the unit of :attr:`dt` in :class:`colvarsfinder.utils.WeightedTrajectory`.
 
     """
     def __init__(self, traj_obj, 
@@ -826,10 +826,11 @@ class RegAutoEncoderTask(TrainingTask):
     def weighted_MSE_loss(self, X, X_lagged, weight):
         r"""
         Args:
-            X, X_lagged: input PyTorch tensors
+            X, X_lagged: input PyTorch tensor
             weight: weights of data in X
 
-        Return: time-lagged reconstruction (MSE) loss of autoencoder
+        Return: 
+            time-lagged reconstruction (MSE) loss of autoencoder
 
         """
         # Forward pass to get output
@@ -840,10 +841,11 @@ class RegAutoEncoderTask(TrainingTask):
     def reg_enc_grad_loss(self, X, weight):
         r"""
         Args:
-            X: data, input PyTorch tensor
-            weight: weights of data
+            X: input PyTorch tensor
+            weight: weights of states in X 
 
-        Return: squared :math:`l^2`-norm of encoder's gradients
+        Return: 
+            squared :math:`l^2`-norm of encoder's gradients
 
         """
 
@@ -864,7 +866,8 @@ class RegAutoEncoderTask(TrainingTask):
             X: data, input tensor
             weight: weights of data
 
-        Return: penalty on the variances of encoder's components
+        Return: 
+            penalty on the variances of encoder's components
 
         """
 
@@ -887,7 +890,8 @@ class RegAutoEncoderTask(TrainingTask):
             X: data, input tensor
             weight: weights of data
 
-        Return: penalty on the orthogonality (covarinace) among encoder's components
+        Return: 
+            penalty on the orthogonality (covarinace) among encoder's components
 
         """
 
@@ -912,10 +916,15 @@ class RegAutoEncoderTask(TrainingTask):
     def reg_eigen_loss(self, X, weight, X_lagged, weight_lagged):
         r"""
         Args:
-            X, X_lagged: data, input tensor
-            weight, weight_lagged: weights of data
+            X: data, input tensor
+            X_lagged: data, time-lagged input tensor
+            weight: weights of data X
+            weight_lagged: weights of data X_lagged
 
-        Return: eigenvalues, variational objective, penalty, and order of eigenfunctions (list of indices)
+        Return: 
+            eigenvalues, variational objective, penalty, and order of eigenfunctions (list of indices)
+
+        X_lagged and weight_lagged are only used when computing eigenfunctions of transfer operator.
 
         """
        
