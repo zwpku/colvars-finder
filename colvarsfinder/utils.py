@@ -110,8 +110,8 @@ class WeightedTrajectory:
 
             self.n_frames = universe.trajectory.n_frames
 
-            # unit: ps
-            self.dt = universe.trajectory.dt
+            # unit: ns
+            self.dt = universe.trajectory.dt * 1e-3
 
             # print information of trajectory
             if verbose: 

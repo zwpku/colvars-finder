@@ -249,7 +249,7 @@ class TrainingTask(ABC):
         pass
 
 class EigenFunctionTask(TrainingTask):
-    r"""The class for training eigenfunctions.
+    r"""Class for training eigenfunctions.
 
     Args:
         traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): An object that holds trajectory data and weights
@@ -532,7 +532,7 @@ class EigenFunctionTask(TrainingTask):
                 self.writer.add_scalar('%s/test' % name, mean_test_loss[i], epoch)
 
 class AutoEncoderTask(TrainingTask):
-    r"""Training task for autoencoder.
+    r"""Class for training autoencoders using reconstruction loss.
 
     Args:
         traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): trajectory data 
@@ -550,19 +550,19 @@ class AutoEncoderTask(TrainingTask):
         plot_class: plot callback class
         plot_frequency: how often (epoch) to call plot function 
         verbose (bool): print more information if true
-        debug_mode (bool): if true, write model to file during the training
+        debug_mode (bool): if true, save model to file during the training, otherwise only the latest or best is kept.
         
     This task trains autoencoders using the standard reconstruction loss discussed in :ref:`loss_autoencoder`. The neural networks representing the encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and the decoder :math:`f_{enc}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` are stored in :attr:`model.encoder` and :attr:`model.decoder`, respectively.
 
     .. note::
 
-        When plot_class!=None, the following line is executed in meth:`AutoEncoderTask.train()`:
+        When plot_class!=None, the following line is executed in meth:`AutoEncoderTask.train`:
 
         .. code-block:: python
 
                 self.plot_class.plot(self.colvar_model(), epoch=epoch)
 
-        Accordingly, plot_class should be an object of a class that implements such a member function. 
+        Accordingly, plot_class should be an object of some class with such a member function. 
 
     Attributes:
         model: same as the input parameter
@@ -689,40 +689,45 @@ class AutoEncoderTask(TrainingTask):
             self.writer.add_scalar('Loss/train', torch.mean(torch.tensor(train_loss)), epoch)
             self.writer.add_scalar('Loss/test', torch.mean(torch.tensor(test_loss)), epoch)
 
-# Task to train a regularized autoencoder
 class RegAutoEncoderTask(TrainingTask):
-    r"""Training task for regularized autoencoder.
+    r"""Class for training regularized autoencoders.
 
     Args:
-        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): trajectory data with weights
-        pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing layer. It corresponds to the function :math:`r:\mathbb{R}^{d}\rightarrow \mathbb{R}^{d_r}` in :ref:`rep_colvars`
-        model (:class:`colvarsfinder.nn.AutoEncoder`): neural network to be trained
+        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): trajectory data 
+        pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing layer. It corresponds to the function :math:`r:\mathbb{R}^{d}\rightarrow \mathbb{R}^{d_r}` described in :ref:`rep_colvars`
+        model (:class:`colvarsfinder.nn.RegAutoEncoder`): neural network to be trained
         model_path (str): directory to save training results
-        eig_weights (list of floats): weights in the regularization part of the loss function involving eigenfunctions 
+        eig_weights (list of floats): weights :math:`(w_i)_{1\le i\le K}` in the regularization part of the loss function involving :math:`K` eigenfunctions 
         learning_rate (float): learning rate
         load_model_filename (str): filename of a trained neural network, used to restart from a previous training if provided
         save_model_every_step (int): how often to save model
         batch_size (int): size of mini-batch 
         num_epochs (int): number of training epochs
-        test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data
-        optimizer_name (str): name of optimizer used for training. either 'Adam' or 'SGD' 
+        test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data optimizer_name (str): name of optimizer used in training. either 'Adam' or 'SGD' 
         alpha (float): weight of the reconstruction loss
-        gamma (list of floats length of 2): weights in the regularization loss involving eigenfunctions
-        eta (list of floats, length of 3): weights in the regularization loss, related to constraints on the (squared, integrated) gradient norm, the norm, and the orthogonality of the encoders
-        lag_tau_ae (float): 'lag time' (in ps) in the reconstruction loss. Positive number corresponds to time-lagged autoencoder, while 0 for standard autoencoder
-        lag_tau_reg (float): 'lag time' (in ps) in the regularization loss involving eigenfunctions. Positive number corresponds to transfer operator, while 0 corresponds to generator
-        beta (float): inverse of temperature, only relevant when the regularization loss corresponds to generator (i.e. lag_idx=0)
+        gamma (list of two floats): weights in the regularization loss involving eigenfunctions (i.e. variational objective and penalty)
+        eta (list of three floats): weights in the regularization loss, related to constraints on the (squared, integrated) gradient norm, the norm, and the orthogonality of the encoders
+        lag_tau_ae (float): lag-time (in ps) in the reconstruction loss.  Positive number corresponds to time-lagged autoencoder, while zero for standard autoencoder
+        lag_tau_reg (float): 'lag time' (in ps) in the regularization loss involving eigenfunctions. Positive number corresponds to computing eigenfunctions for transfer operator, while zero corresponds to computing eigenfunctions of generator 
+        beta (float): inverse of temperature, only relevant when the regularization loss corresponds to generator (i.e. lag_tau_reg=0)
         device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
         plot_class: plot callback class
-        plot_frequency: how often (epoch) to call plot function 
+        plot_frequency: how often (epoch) to call plot function of plot_class
+        freeze_encoder (bool): fix encoder if true 
         verbose (bool): print more information if true
+        debug_mode (bool): if true, write model to file during the training
         
-    This task trains a regularized autoencoder using the loss discussed in :ref:`loss_autoencoder`. The neural networks representing the encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and the decoder :math:`f_{enc}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` are stored in :attr:`model.encoder` and :attr:`model.decoder`, respectively.
+    This task trains a regularized autoencoder using the generalized loss discussed in :ref:`loss_autoencoder`. The neural networks representing the encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and the decoder :math:`f_{enc}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` are stored in :attr:`model.encoder` and :attr:`model.decoder`, respectively.
 
     Attributes:
-        model: the same as the input parameter
-        preprocessing_layer: the same as the input parameter pp_layer
-        loss_list: list of loss values on training data and test data during the training
+        model: same as the input parameter
+        preprocessing_layer: same as the input parameter pp_layer
+        loss_list: list of loss values evaluated on training data and test data during the training
+
+    .. note::
+
+        make sure that lag_tau_ae=:math:`i\Delta t` and lag_tau_reg=:math:`j\Delta t` for some integers :math:`i,j`, where :math:`\Delta t` is the time interval between two adjacent states in the trajectory data stored in traj_obj. 
+
     """
     def __init__(self, traj_obj, 
                         pp_layer, 
@@ -757,7 +762,7 @@ class RegAutoEncoderTask(TrainingTask):
 
         #--- prepare the data ---
         self._weights = torch.tensor(traj_obj.weights).to(dtype=torch.get_default_dtype())
-        self._feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory).to(dtype=torch.get_default_dtype()))
+        self._feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory).to(dtype=torch.get_default_dtype())) # this is a 2d tensor
 
         self.alpha = alpha
         self.gamma = gamma
@@ -779,16 +784,16 @@ class RegAutoEncoderTask(TrainingTask):
         self.lag_ae_idx = int(lag_ae_idx)
         self.lag_idx = int(lag_idx)
 
-        # list of (i,j) pairs in the penalty term
-        if self.gamma[0] + self.gamma[1] > self._eps :
+        if self.gamma[0] + self.gamma[1] > self._eps : # if loss on eigenfunctions are involved 
             assert self.num_reg > 0, 'number of eigenfunctions must be positive!'
+            # list of (i,j) pairs in the penalty term
             self._ij_list = list(itertools.combinations(range(self.num_reg), 2))
             self._num_ij_pairs = len(self._ij_list)
-            if self.lag_idx == 0 :
+            if self.lag_idx == 0 : # generator 
                 self._beta = beta
-                self._diag_coeff = torch.ones(self.tot_dim)
+                self._diag_coeff = torch.ones(self.tot_dim) # only identity matrix is supported currently 
 
-        if self.eta[2] > self._eps : # orthogonality constraints
+        if self.eta[2] > self._eps : # orthogonality constraints on encoder's components 
             self._enc_ij_list = list(itertools.combinations(range(self.k), 2))
             self._enc_num_ij_pairs = len(self._enc_ij_list)
 
@@ -798,28 +803,49 @@ class RegAutoEncoderTask(TrainingTask):
     def colvar_model(self):
         r"""
         Return:
-            :external+pytorch:class:`torch.nn.Module`: neural network that represents collective variables :math:`\xi=f_{enc}\circ g`, given the :attr:`preprocessing_layer` that represents :math:`g` and the encoder :attr:`model.encoder` that represents :math:`f_{enc}`. 
+            :external+pytorch:class:`torch.nn.Module`: neural network that represents collective variables, concatenation of :attr:`preprocessing_layer` and the encoder :attr:`model.encoder`. 
 
         This function is called by :meth:`TrainingTask.save_model` in the base class.
         """
         return torch.nn.Sequential(self.preprocessing_layer, self.model.encoder)
 
     def reg_model(self):
+        r"""
+        Return:
+            :external+pytorch:class:`torch.nn.Module`: neural network that represents the regularizers, i.e. eigenfunctions. 
+            A concatenation of :attr:`preprocessing_layer` and :class:`colvarsfinder.nn.RegModel`. 
+
+        """
 
         if self._cvec is None :
             self._cvec = torch.arange(self.model.num_reg)
 
         reg_reordered = RegModel(self.model, self._cvec) 
-        #torch.nn.ModuleList([copy.deepcopy(self.model.reg[idx]) for idx in self._cvec])
         return torch.nn.Sequential(self.preprocessing_layer, reg_reordered)
 
     def weighted_MSE_loss(self, X, X_lagged, weight):
+        r"""
+        Args:
+            X, X_lagged: input PyTorch tensors
+            weight: weights of data in X
+
+        Return: time-lagged reconstruction (MSE) loss of autoencoder
+
+        """
         # Forward pass to get output
         out = self.model.forward_ae(X)
         # Evaluate loss
         return (weight * torch.sum((out-X_lagged)**2, dim=1)).sum() / weight.sum()
 
     def reg_enc_grad_loss(self, X, weight):
+        r"""
+        Args:
+            X: data, input PyTorch tensor
+            weight: weights of data
+
+        Return: squared :math:`l^2`-norm of encoder's gradients
+
+        """
 
         X.requires_grad_()
 
@@ -833,6 +859,14 @@ class RegAutoEncoderTask(TrainingTask):
         return loss
 
     def reg_enc_norm_loss(self, X, weight):
+        r"""
+        Args:
+            X: data, input tensor
+            weight: weights of data
+
+        Return: penalty on the variances of encoder's components
+
+        """
 
         tot_weight = weight.sum()
 
@@ -848,6 +882,14 @@ class RegAutoEncoderTask(TrainingTask):
         return loss
 
     def reg_enc_orthognal_loss(self, X, weight):
+        r"""
+        Args:
+            X: data, input tensor
+            weight: weights of data
+
+        Return: penalty on the orthogonality (covarinace) among encoder's components
+
+        """
 
         tot_weight = weight.sum()
 
@@ -868,42 +910,52 @@ class RegAutoEncoderTask(TrainingTask):
         return loss
 
     def reg_eigen_loss(self, X, weight, X_lagged, weight_lagged):
-        
-        if self.lag_idx == 0 :
+        r"""
+        Args:
+            X, X_lagged: data, input tensor
+            weight, weight_lagged: weights of data
+
+        Return: eigenvalues, variational objective, penalty, and order of eigenfunctions (list of indices)
+
+        """
+       
+        if self.lag_idx == 0 : # generator 
             X.requires_grad_()
 
         tot_weight = weight.sum()
 
-        # Forward pass to get output
+        # Forward pass to evaluate eigenfunctions 
         y = self.model.forward_reg(X) 
         
-        # Mean and variance evaluated on data
+        # Mean and variance of eigenfunctions evaluated on data
         mean_list = [(y[:,idx] * weight).sum() / tot_weight for idx in range(self.num_reg)]
         var_list = [(y[:,idx]**2 * weight).sum() / tot_weight - mean_list[idx]**2 for idx in range(self.num_reg)]
 
-        if self.lag_idx > 0 :
+        if self.lag_idx > 0 :  # if transfer operator, compute quantities on time-lagged data
             tot_weight_lagged = weight_lagged.sum()
             y_lagged = self.model.forward_reg(X_lagged)
             mean_list_lagged = [(y_lagged[:,idx] * weight_lagged).sum() / tot_weight_lagged for idx in range(self.num_reg)]
             var_list_lagged = [(y_lagged[:,idx]**2 * weight_lagged).sum() / tot_weight_lagged - mean_list_lagged[idx]**2 for idx in range(self.num_reg)]
 
-        if self.lag_idx == 0:
+        if self.lag_idx == 0: # generator 
             y_grad_vec = torch.stack([torch.autograd.grad(outputs=y[:,idx].sum(), inputs=X, retain_graph=True, create_graph=True)[0].reshape((-1,self.tot_dim)) for idx in range(self.num_reg)], dim=2)
             # Compute Rayleigh quotients as eigenvalues
             eig_vals = torch.tensor([1.0 / (tot_weight * self._beta) * torch.sum((y_grad_vec[:,:,idx]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[idx] for idx in range(self.num_reg)]).to(dtype=torch.get_default_dtype())
-        else :
-            eig_vals = 1.0 / (1e-3 * self.traj_dt * self.lag_idx) * torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / (var_list_lagged[idx] + var_list[idx]) for idx in range(self.num_reg)])
+        else : #transfer operator 
+            eig_vals = 1.0 / (self.traj_dt * self.lag_idx) * torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / (var_list_lagged[idx] + var_list[idx]) for idx in range(self.num_reg)])
 
         cvec = np.argsort(eig_vals)
         # Sort the eigenvalues 
         eig_vals = eig_vals[cvec]
                                             
-        if self.lag_idx == 0 :
+        # first, variational objective
+        if self.lag_idx == 0 :  # generator 
             non_penalty_loss = 1.0 / (tot_weight * self._beta) * sum([self._eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.num_reg)])
         else :
-            non_penalty_loss = 1.0 / (1e-3 * self.traj_dt * self.lag_idx) * 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list_lagged[cvec[idx]] + var_list[cvec[idx]]) for idx in range(self.num_reg)])
+            non_penalty_loss = 1.0 / (self.traj_dt * self.lag_idx) * 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list_lagged[cvec[idx]] + var_list[cvec[idx]]) for idx in range(self.num_reg)])
 
-        # Sum of squares of variance for each eigenfunction
+        # second, penalty
+        # sum of squares of variance for each eigenfunction
         penalty = sum([(var_list[idx] - 1.0)**2 for idx in range(self.num_reg)])
 
         for idx in range(self._num_ij_pairs):
