@@ -58,12 +58,12 @@ def create_sequential_nn(layer_dims, activation=torch.nn.Tanh()):
     return layers
 
 class AutoEncoder(torch.nn.Module):
-    r"""Neural network representing an autoencoder
+    r"""Autoencoder neural network 
 
     Args:
-        e_layer_dims (list of ints): dimensions of layers of encoder
-        d_layer_dims (list of ints): dimensions of layers of decoder
-        activation: PyTorch non-linear activation function
+        e_layer_dims (list of ints): dimensions of encoder's layers
+        d_layer_dims (list of ints): dimensions of decoder's layers 
+        activation: PyTorch activation function
 
     Raise:
         AssertionError: if e_layer_dims[-1] != d_layer_dims[0].
@@ -92,6 +92,8 @@ class AutoEncoder(torch.nn.Module):
         Return:
             list of pairs of name and parameters of all linear layers.
         """
+        assert 0 <= cv_idx < self.encoded_dim, f"index {cv_idx} exceeded the range [0, {self.encoded_dim-1}]!"
+
         param_vec = []
         for name, param in self.encoder.named_parameters():
             layer_idx = int(re.search(r'\d+', name).group())
@@ -104,7 +106,7 @@ class AutoEncoder(torch.nn.Module):
     def forward(self, inp):
         """
         Return: 
-            value of autoencoder given the input tensor *inp*
+            output of autoencoder given the input tensor *inp*
         """
         return self.decoder(self.encoder(inp))
 
