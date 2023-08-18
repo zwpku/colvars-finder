@@ -1,13 +1,11 @@
 ColVars Finder
 ==============
 
-Find collective variables (CVs) of dynamical systems by training neural networks.
+A package to find collective variables (CVs) of dynamical systems by training neural networks.
 
-Two methods are implemented by either training **autoencoder** or computing **eigenfunctions**.
+Two methods are implemented, by either training **autoencoders** or computing leading **eigenfunctions** of infinitesimal generator or transfer operator.
 
 See `Mathematical Backgrounds`_.
-
-**This package is under development**.
 
 Installation 
 ============
