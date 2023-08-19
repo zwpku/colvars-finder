@@ -20,7 +20,7 @@ for test functions :math:`f`. These data, as well as the weights, can be generat
 
 .. _rep_colvars:
 
-.. rubric:: Representation of collective cariables
+.. rubric:: Representation of collective variables
 
 In molecular applications, we often expect that the collective variables,
 denoted by :math:`\xi:\mathbb{R}^{d}\rightarrow \mathbb{R}^k`, are invariant
