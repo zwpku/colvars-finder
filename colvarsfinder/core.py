@@ -730,7 +730,7 @@ class RegAutoEncoderTask(TrainingTask):
         pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing layer. It corresponds to the function :math:`r:\mathbb{R}^{d}\rightarrow \mathbb{R}^{d_r}` described in :ref:`rep_colvars`
         model (:class:`colvarsfinder.nn.RegAutoEncoder`): neural network to be trained
         model_path (str): directory to save training results
-        eig_weights (list of floats): weights :math:`(w_i)_{1\le i\le K}` in the regularization part of the loss function involving :math:`K` eigenfunctions 
+        eig_weights (list of floats): weights :math:`(\omega_i)_{1\le i\le K}` in the regularization part of the loss function involving :math:`K` eigenfunctions 
         learning_rate (float): learning rate
         load_model_filename (str): filename of a trained neural network, used to restart from a previous training if provided
         save_model_every_step (int): how often to save model
@@ -742,7 +742,7 @@ class RegAutoEncoderTask(TrainingTask):
         gamma (list of two floats): weights in the regularization loss involving eigenfunctions (i.e. variational objective and penalty)
         eta (list of three floats): weights in the regularization loss, related to constraints on the (squared, integrated) gradient norm, the norm, and the orthogonality of the encoders
         lag_tau_ae (float): lag-time in the reconstruction loss.  Positive number corresponds to time-lagged autoencoder, while zero for standard autoencoder
-        lag_tau_reg (float): 'lag time' in the regularization loss involving eigenfunctions. Positive number corresponds to computing eigenfunctions for transfer operator, while zero corresponds to computing eigenfunctions of generator 
+        lag_tau_reg (float): lag-time in the regularization loss involving eigenfunctions. Positive number corresponds to computing eigenfunctions for transfer operator, while zero corresponds to computing eigenfunctions of generator 
         beta (float): inverse of temperature, only relevant when the regularization loss corresponds to generator (i.e. lag_tau_reg=0)
         device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
         plot_class: plot callback class
