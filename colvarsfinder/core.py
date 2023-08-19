@@ -5,7 +5,7 @@ r"""Training Tasks --- :mod:`colvarsfinder.core`
 :Year: 2022
 :Copyright: GNU Public License v3
 
-This module implements classes for learning collective variables (ColVars).  
+This module implements classes for learning collective variables (CVs).  
 The following training tasks derived from the base class :class:`TrainingTask` are implemented:
 
     #. :class:`AutoEncoderTask`, which finds collective variables by training autoencoder.
@@ -20,21 +20,21 @@ Base class
 .. autoclass:: TrainingTask
     :members:
 
-Learning ColVars by training autoencoder
+Learning CVs by training autoencoder
 -----------------------------------------
 
 .. autoclass:: AutoEncoderTask
     :members:
     :show-inheritance:
 
-Learning ColVars by training regularized autoencoder
+Learning CVs by training regularized autoencoder
 -----------------------------------------
 
 .. autoclass:: RegAutoEncoderTask
     :members:
     :show-inheritance:
 
-Learning ColVars by computing eigenfunctions
+Learning CVs by computing eigenfunctions of transfer operator or generator
 --------------------------------------------
 
 .. autoclass:: EigenFunctionTask
@@ -61,7 +61,7 @@ class TrainingTask(ABC):
     r"""Abstract base class of train tasks. 
 
     Args:
-        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): An object that holds trajectory data 
+        traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): An object that holds trajectory data and weights
         pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing layer. It corresponds to the function :math:`r` described in :ref:`rep_colvars`
         model : neural network to be trained
         model_path (str): directory to save training results
@@ -249,22 +249,22 @@ class TrainingTask(ABC):
         pass
 
 class EigenFunctionTask(TrainingTask):
-    r"""Class for training eigenfunctions.
+    r"""Class for training eigenfunctions of transfer operator or generator.
 
     Args:
         traj_obj (:class:`colvarsfinder.utils.WeightedTrajectory`): An object that holds trajectory data and weights
         pp_layer (:external+pytorch:class:`torch.nn.Module`): preprocessing layer. It corresponds to the function :math:`r` in :ref:`rep_colvars`
-        model (:class:`colvarsfinder.nn.EigenFunctions`): feedforward neural network to be trained. It corresponds to :math:`g_1, \dots, g_k` in :ref:`loss_eigenfunction` 
+        model (:class:`colvarsfinder.nn.EigenFunctions`): feedforward neural network to be trained. It corresponds to functions :math:`g_1, \dots, g_k` described in :ref:`loss_eigenfunction` 
         model_path (str): directory to save training results
-        beta (float): the value of :math:`(k_BT)^{-1}`
-        lag_tau (float): 'lag time' (ps) in the loss function. Positive value corresponds to transfer operator, while 0 corresponds to generator.
-        diag_coeff (:external+pytorch:class:`torch.Tensor`): 1D PyTorch tensor of length :math:`d`, which contains the diagonal entries of the matrix :math:`a` in the :ref:`loss_eigenfunction`
         alpha (float): penalty constant :math:`\alpha` in the loss function
-        eig_weights (list of floats): :math:`k` weights :math:`\omega_1 > \omega_2 > \dots > \omega_k > 0` in the loss functions in :ref:`loss_eigenfunction`
+        eig_weights (list of floats): :math:`k` weights :math:`\omega_1 \ge \omega_2 \ge \dots \ge \omega_k > 0` in the loss functions in :ref:`loss_eigenfunction`
+        diag_coeff (:external+pytorch:class:`torch.Tensor`): 1D PyTorch tensor of length :math:`d`, which contains diagonal entries of the matrix :math:`a` in the :ref:`loss_eigenfunction`
+        beta (float): :math:`(k_BT)^{-1}` for MD systems
+        lag_tau (float): lag-time (ns) in the loss function. Positive value corresponds to learning eigenfunctions of transfer operator, while zero corresponds to generator.
         learning_rate (float): learning rate
         load_model_filename (str): filename of a trained model, used to restart from a previous training if provided
         save_model_every_step (int): how often to save model
-        sort_eigvals_in_training (bool): whether or not to reorder the :math:`k` eigenfunctions according to estimation of eigenvalues
+        sort_eigvals_in_training (bool): whether or not to reorder the :math:`k` eigenfunctions according to estimated eigenvalues (such that the first corresponds to the slowest scale)
         k (int): number of eigenfunctions to be learned
         batch_size (int): size of mini-batch 
         num_epochs (int): number of training epochs
@@ -274,10 +274,17 @@ class EigenFunctionTask(TrainingTask):
         plot_class: plot callback class
         plot_frequency: how often (epoch) to call plot function 
         verbose (bool): print more information if true
+        debug_mode (bool): if true, write model to file during the training
 
     Attributes:
-        model: the same as the input parameter
+        model: same as the input parameter
+        preprocessing_layer: same as the input parameter pp_layer
         loss_list: list of loss values evaluated on training data and test data during the training
+
+    .. note::
+
+        Make sure that lag_tau= :math:`i\Delta t` for some integers :math:`i`, where :math:`\Delta t` is the time interval between two adjacent states in the trajectory data stored in traj_obj. For MD systems, the unit of both lag-times is ns, the same as the unit of :attr:`dt` in :class:`colvarsfinder.utils.WeightedTrajectory`.
+
     """
 
     def __init__(self, traj_obj, 
@@ -322,33 +329,32 @@ class EigenFunctionTask(TrainingTask):
         self._ij_list = list(itertools.combinations(range(self.k), 2))
         self._num_ij_pairs = len(self._ij_list)
 
-        #--- prepare the data ---
-        self._weights = torch.tensor(traj_obj.weights).to(dtype=torch.get_default_dtype())
-
         if self.verbose: print ('\nEigenfunctions:\n', self.model, flush=True)
 
         self.init_model_and_optimizer()
 
+        # get the trajectory and weights
+        self._weights = torch.tensor(traj_obj.weights).to(dtype=torch.get_default_dtype())
         self._traj = torch.tensor(traj_obj.trajectory).to(dtype=torch.get_default_dtype())
 
         self.tot_dim = traj_obj.trajectory[0,...].size 
 
-        if self.lag_idx == 0 :
+        if self.lag_idx == 0 : # generator 
             self._beta = beta
-            if diag_coeff is not None :
+            if diag_coeff is not None : # use the diagonal matrix provided 
                 assert diag_coeff.dim() == 1 and diag_coeff.size(dim=0) == self.tot_dim, f'diag_coeff should be a 1d tensor of length {self.tot_dim}, current shape: {diag_coeff}'
                 self._diag_coeff = diag_coeff
-            else :
+            else : # identity 
                 self._diag_coeff = torch.ones(self.tot_dim)
 
     def get_reordered_eigenfunctions(self, model, cvec):
         r"""
             Args: 
-                model (:class:`EigenFunctions`): model whose module list :func:`EigenFunctions.eigen_funcs` are to be reordered.
+                model (:class:`colvarsfinder.nn.EigenFunctions`): model whose module list :attr:`colvarsfinder.nn.EigenFunctions.eigen_funcs` are to be reordered.
                 cvec (list of int): a permutation of :math:`[0, 1, \dots, k-1]` 
 
             Return: 
-                a new object of :class:`EigenFunctions` by deep copy whose module list are reordered according to cvec.
+                a new object of :class:`colvarsfinder.nn.EigenFunctions` by deep copy whose module list are reordered according to cvec.
 
             Functions in :attr:`model` may not be sorted according to the magnitude of eigenvalues. This function returns a sorted model that can then be saved to file.
         """
@@ -360,7 +366,7 @@ class EigenFunctionTask(TrainingTask):
     def colvar_model(self):
         r"""
             Return:
-                :external+pytorch:class:`torch.nn.Module`: neural network that represents :math:`\xi=(g_1\circ r, \dots, g_k\circ r)^T`,
+                :external+pytorch:class:`torch.nn.Module`: neural network that represents collective variables :math:`\xi=(g_1\circ r, \dots, g_k\circ r)^T`,
                 built from :attr:`preprocessing_layer` that represents :math:`r` and :attr:`model` that represents :math:`g_1, g_2,
                 \cdots, g_k`. See :ref:`loss_eigenfunction`.
         """
@@ -374,24 +380,37 @@ class EigenFunctionTask(TrainingTask):
         return None
 
     def loss_func(self, X, weight, X_lagged, weight_lagged):
+        r"""
+        Args:
+            X: data, input tensor
+            X_lagged: data, time-lagged input tensor
+            weight: weights of data X
+            weight_lagged: weights of data X_lagged
 
-        # Evaluate function value on data
+        Return: 
+            total loss, eigenvalues, variational objective, penalty, and ordering of eigenfunctions (a list of indices)
+
+        X_lagged and weight_lagged are only used when computing eigenfunctions of transfer operator.
+
+        """
+
+        # evaluate function value on data
         y = self.model(self.preprocessing_layer(X))
 
-        # Total weight, will be used for normalization 
+        # total weight, will be used for normalization 
         tot_weight = weight.sum()
 
-        # Mean and variance evaluated on data
+        # mean and variance evaluated on data
         mean_list = [(y[:,idx] * weight).sum() / tot_weight for idx in range(self.k)]
         var_list = [(y[:,idx]**2 * weight).sum() / tot_weight - mean_list[idx]**2 for idx in range(self.k)]
 
-        if self.lag_idx > 0 :
+        if self.lag_idx > 0 : # for transfer operator, also compute quantities on time-lagged data
             tot_weight_lagged = weight_lagged.sum()
             y_lagged = self.model(self.preprocessing_layer(X_lagged))
             mean_list_lagged = [(y_lagged[:,idx] * weight_lagged).sum() / tot_weight_lagged for idx in range(self.k)]
             var_list_lagged = [(y_lagged[:,idx]**2 * weight_lagged).sum() / tot_weight_lagged - mean_list_lagged[idx]**2 for idx in range(self.k)]
 
-        if self.lag_idx == 0 :
+        if self.lag_idx == 0 : # generator 
             """
               Compute gradients with respect to coordinates
               The flag create_graph=True is needed, because later we need to compute
@@ -401,7 +420,7 @@ class EigenFunctionTask(TrainingTask):
             # Compute Rayleigh quotients as eigenvalues
             eig_vals = torch.tensor([1.0 / (tot_weight * self._beta) * torch.sum((y_grad_vec[:,:,idx]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[idx] for idx in range(self.k)]).to(dtype=torch.get_default_dtype())
         else :
-            eig_vals = 1.0 / (1e-3 * self.traj_dt * self.lag_idx) * torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / (var_list[idx] + var_list_lagged[idx]) for idx in range(self.k)])
+            eig_vals = 1.0 / (self.traj_dt * self.lag_idx) * torch.tensor([1.0 / tot_weight * torch.sum(((y_lagged[:,idx] - y[:,idx])**2) * weight) / (var_list[idx] + var_list_lagged[idx]) for idx in range(self.k)])
 
         cvec = range(self.k)
         if self._sort_eigvals_in_training :
@@ -409,21 +428,25 @@ class EigenFunctionTask(TrainingTask):
             # Sort the eigenvalues 
             eig_vals = eig_vals[cvec]
 
-        if self.lag_idx == 0 :
+        # compute variational objective, i.e. weighted sum of Dirichlet energies
+        if self.lag_idx == 0 : # for generator 
             non_penalty_loss = 1.0 / (tot_weight * self._beta) * sum([self._eig_w[idx] * torch.sum((y_grad_vec[:,:,cvec[idx]]**2 * self._diag_coeff).sum(dim=1) * weight) / var_list[cvec[idx]] for idx in range(self.k)])
-        else :
-            non_penalty_loss = 1.0 / (1e-3 * self.traj_dt * self.lag_idx) * 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list[cvec[idx]] + var_list_lagged[cvec[idx]]) for idx in range(self.k)])
+        else : # for transfer operator 
+            non_penalty_loss = 1.0 / (self.traj_dt * self.lag_idx) * 1.0 / tot_weight * sum([self._eig_w[idx] * torch.sum((y_lagged[:,idx] - y[:,idx])**2 * weight) / (var_list[cvec[idx]] + var_list_lagged[cvec[idx]]) for idx in range(self.k)])
 
+        # compute penalty
         penalty = torch.zeros(1, requires_grad=True)
 
-        # Sum of squares of variance for each eigenfunction
+        # normalization: sum of squares of variance for each eigenfunction
         penalty = sum([(var_list[idx] - 1.0)**2 for idx in range(self.k)])
 
+        # orthogonality 
         for idx in range(self._num_ij_pairs):
           ij = self._ij_list[idx]
-          # Sum of squares of covariance between two different eigenfunctions
+          # sum of squares of covariance between two different eigenfunctions
           penalty += ((y[:, ij[0]] * y[:, ij[1]] * weight).sum() / tot_weight - mean_list[ij[0]] * mean_list[ij[1]])**2
 
+        # total loss
         loss = 1.0 * non_penalty_loss + self._alpha * penalty 
 
         return loss, eig_vals, non_penalty_loss, penalty, cvec
@@ -463,7 +486,7 @@ class EigenFunctionTask(TrainingTask):
         print ("Test set:\n\t%d data, %d iterations per epoch, %d iterations in total." % (len(index_test), len(test_loader), len(test_loader) * self.num_epochs), flush=True)
 
         for epoch in tqdm(range(self.num_epochs)):
-            # Train the model by going through the whole dataset
+            # train the model by going through the whole dataset
             self.model.train()
             train_loss = []
 
@@ -471,25 +494,25 @@ class EigenFunctionTask(TrainingTask):
 
                 X, weight, index = X.to(self.device), weight.to(self.device), index.to(self.device)
 
-                # Clear gradients w.r.t. parameters
+                # clear gradients w.r.t. parameters
                 self.optimizer.zero_grad(set_to_none=True)
 
-                if self.lag_idx == 0 :
+                if self.lag_idx == 0 : # generator 
                     # we will compute spatial gradients
                     X.requires_grad_()
                     X_lagged = None
-                else :
+                else : # transfer operator, time-lagged data are needed
                     X_lagged = self._traj[index + self.lag_idx]
                     weight_lagged = self._weights[index + self.lag_idx]
 
-                # Evaluate loss
+                # evaluate loss
                 loss, eig_vals, non_penalty_loss, penalty, self._cvec = self.loss_func(X, weight, X_lagged, weight_lagged)
-                # Get gradient with respect to parameters of the model
+                # get gradient with respect to parameters of the model
                 loss.backward(retain_graph=True)
-                # Store loss
+                # store loss
                 train_loss.append([loss, non_penalty_loss, penalty] + [eig_vals[i] for i in range(self.k)])
 
-                # Updating parameters
+                # updating parameters
                 self.optimizer.step()
 
             if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
@@ -502,13 +525,13 @@ class EigenFunctionTask(TrainingTask):
                 if self.plot_class is not None : 
                     self.plot_class.plot(self.colvar_model(), epoch=epoch)
 
-            # Evaluate the test loss on the test dataset
+            # evaluate the test loss on the test dataset
             test_loss = []
             for iteration, [X, weight, index] in enumerate(test_loader):
 
                 X, weight, index = X.to(self.device), weight.to(self.device), index.to(self.device)
 
-                if self.lag_idx == 0 :
+                if self.lag_idx == 0 : 
                     # we will compute spatial gradients
                     X.requires_grad_()
                     X_lagged = None
@@ -518,7 +541,7 @@ class EigenFunctionTask(TrainingTask):
                     weight_lagged = self._weights[index + self.lag_idx]
 
                 loss, eig_vals, non_penalty_loss, penalty, cvec = self.loss_func(X, weight, X_lagged, weight_lagged)
-                # Store loss
+                # store loss
                 test_loss.append([loss, non_penalty_loss, penalty] + [eig_vals[i] for i in range(self.k)])
 
             self.loss_list.append([torch.tensor(train_loss), torch.tensor(test_loss)])
@@ -713,7 +736,8 @@ class RegAutoEncoderTask(TrainingTask):
         save_model_every_step (int): how often to save model
         batch_size (int): size of mini-batch 
         num_epochs (int): number of training epochs
-        test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data optimizer_name (str): name of optimizer used in training. either 'Adam' or 'SGD' 
+        test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data 
+        optimizer_name (str): name of optimizer used in training. either 'Adam' or 'SGD' 
         alpha (float): weight of the reconstruction loss
         gamma (list of two floats): weights in the regularization loss involving eigenfunctions (i.e. variational objective and penalty)
         eta (list of three floats): weights in the regularization loss, related to constraints on the (squared, integrated) gradient norm, the norm, and the orthogonality of the encoders
@@ -723,7 +747,7 @@ class RegAutoEncoderTask(TrainingTask):
         device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
         plot_class: plot callback class
         plot_frequency: how often (epoch) to call plot function of plot_class
-        freeze_encoder (bool): fix encoder if true 
+        freeze_encoder (bool): fix parameters of encoder if true 
         verbose (bool): print more information if true
         debug_mode (bool): if true, write model to file during the training
         
@@ -736,7 +760,7 @@ class RegAutoEncoderTask(TrainingTask):
 
     .. note::
 
-        make sure that lag_tau_ae= :math:`i\Delta t` and lag_tau_reg= :math:`j\Delta t` for some integers :math:`i,j`, where :math:`\Delta t` is the time interval between two adjacent states in the trajectory data stored in traj_obj. For MD systems, the unit of both lag-times is ns, the same as the unit of :attr:`dt` in :class:`colvarsfinder.utils.WeightedTrajectory`.
+        Make sure that lag_tau_ae= :math:`i\Delta t` and lag_tau_reg= :math:`j\Delta t` for some integers :math:`i,j`, where :math:`\Delta t` is the time interval between two adjacent states in the trajectory data stored in traj_obj. For MD systems, the unit of both lag-times is ns, the same as the unit of :attr:`dt` in :class:`colvarsfinder.utils.WeightedTrajectory`.
 
     """
     def __init__(self, traj_obj, 
