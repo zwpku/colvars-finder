@@ -74,13 +74,13 @@ for a test function :math:`f`, and this class computes the eigenfunctions of PDE
 
     -\mathcal{L}\phi = \lambda \phi,
 
-corresponding to the first :math:`k` eigenvalues :math:`0 < \lambda_1 \le \lambda_2 \le \cdots \le \lambda_k. This is done by training neural network to learn functions :math:`g_1, g_2, \cdots, g_k:\mathbb{R}^{d_r}\rightarrow \mathbb{R}` using the data-version of the loss 
+corresponding to the first :math:`k` eigenvalues :math:`0 < \lambda_1 \le \lambda_2 \le \cdots \le \lambda_k`. This is done by training neural network to learn functions :math:`g_1, g_2, \cdots, g_k:\mathbb{R}^{d_r}\rightarrow \mathbb{R}` using the data-version of the loss 
 
 .. _loss_eigen_generator:
 
 .. math::
     \sum_{i=1}^k \omega_i  \frac{\beta^{-1} \mathbf{E}_{\mu} \big[(a \nabla f_i)\cdot \nabla f_i\big]}{\mbox{var}_{\mu} f_i} 
-    + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big(\mathbf{E}_{\mu} (f_{i_1}-\mathbf{E}_{\mu}f_{i_1}), f_{i_2}-\mathbf{E}_{\mu}f_{i_2}) - \delta_{i_1i_2}\Big)^2,
+    + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2,
 
 where 
 
@@ -90,17 +90,17 @@ where
     #. :math:`\omega_1 \ge \omega_2 \ge \dots \ge \omega_k > 0` are :math:`k` positive constants;
     #. :math:`f_i=g_i\circ r, 1\le i \le k`.
 
-In the transfer operator case, assume the lag-time is :math:`\tau` and the transition density at time :math:`\tau` given the state :math:`x` at time zero is :math:`p_\tau(y|x)dy`. The loss function is 
+In the transfer operator case, assume the lag-time is :math:`\tau` and the transition density at time :math:`\tau` given the state :math:`x` at time zero is :math:`p_\tau(\cdot|x)`. The loss function used to learn eigenfunctions is 
 
 .. _loss_eigen_transfer:
 
 .. math::
-    \frac{1}{2\tau}\sum_{i=1}^k \omega_i  \frac{\mathbf{E}_{x\sim\mu, y\sim p_\tau(\cdot|x)} \big[|f_i(y)- f_i(x)|^2\big]}{\mbox{var}_{\mu} f_i} + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big(\mathbf{E}_{\mu} (f_{i_1}-\mathbf{E}_{\mu}f_{i_1}), f_{i_2}-\mathbf{E}_{\mu}f_{i_2}) - \delta_{i_1i_2}\Big)^2,
+    \frac{1}{2\tau}\sum_{i=1}^k \omega_i  \frac{\mathbf{E}_{x\sim\mu, y\sim p_\tau(\cdot|x)} \big[|f_i(y)- f_i(x)|^2\big]}{\mbox{var}_{\mu} f_i} + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2,
 
-In practice, with weighted trajectory data :math:`x^{(1)}, \cdots, x^{(N)}` and assuming :math:`\tau=j\Delta t`, where :math:`\Delta t` is the time interval between two consecutive states, then 
+In practice, with weighted trajectory data :math:`x^{(1)}, \cdots, x^{(N)}` and assuming :math:`\tau=j\Delta t`, where :math:`\Delta t` is the time interval between two consecutive states and :math:`j` is an integer, then 
 
 .. math::
-    \mathbf{E}_{x\sim\mu, y\sim p_\tau(\cdot|x)} \big[|f_i(y)- f_i(x)|^2\big] \approx \frac{\sum_{n=1}^{N-j} v_n |f_i(x^{(n+j}) - f_i(x^{(n)})|^2}{\sum_{n=1}^{N-j} v_n}
+    \mathbf{E}_{x\sim\mu, y\sim p_\tau(\cdot|x)} \big[|f_i(y)- f_i(x)|^2\big] \approx \frac{\sum_{l=1}^{N-j} v_l |f_i(x^{(l+j}) - f_i(x^{(l)})|^2}{\sum_{l=1}^{N-j} v_l}\,.
 
 After training, the collective variables are constructed by 
 
