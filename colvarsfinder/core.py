@@ -367,8 +367,7 @@ class EigenFunctionTask(TrainingTask):
         r"""
             Return:
                 :external+pytorch:class:`torch.nn.Module`: neural network that represents collective variables :math:`\xi=(g_1\circ r, \dots, g_k\circ r)^T`,
-                built from :attr:`preprocessing_layer` that represents :math:`r` and :attr:`model` that represents :math:`g_1, g_2,
-                \cdots, g_k`. See :ref:`loss_eigenfunction`.
+                built from :attr:`preprocessing_layer` that represents :math:`r` and :attr:`model` that represents :math:`g_1, g_2, \cdots, g_k`. See :ref:`loss_eigenfunction`.
         """
         if self._cvec is None :
             self._cvec = torch.arange(self.k)

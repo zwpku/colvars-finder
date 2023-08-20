@@ -16,15 +16,13 @@ such that one can approximate the distribution :math:`\mu` by
 .. math::
    \int_{\mathbb{R}^{d}} f(x) \mu(dx) \approx \frac{\sum_{l=1}^n v_l f(x_l)}{\sum_{l=1}^n v_l}\,,
 
-for test functions :math:`f`. These data, as well as the weights, can be generated using the module :mod:`colvarsfinder.utils`.
+for test functions :math:`f`. 
 
 .. _rep_colvars:
 
 .. rubric:: Representation of collective variables
 
-In molecular applications, we often expect that the collective variables,
-denoted by :math:`\xi:\mathbb{R}^{d}\rightarrow \mathbb{R}^k`, are invariant
-under rotations and translations, or that :math:`\xi` is a function of features (bond distances, angles, etc.)
+In molecular applications, we often expect that the collective variables, denoted by :math:`\xi:\mathbb{R}^{d}\rightarrow \mathbb{R}^k`, are invariant under rotations and translations, or that :math:`\xi` is a function of features (e.g. bond distances, angles).
 To achieve this goal, the training tasks in the module :mod:`colvarsfinder.core` look for :math:`\xi` that is of the form
 
 .. math::
@@ -63,33 +61,46 @@ After training, the collective variables are constructed by
 
 .. rubric:: Loss function for training eigenfunctions 
 
-The class :class:`colvarsfinder.core.EigenFunctionTask` solves the eigenfunctions :math:`\phi_1, \phi_2, \dots, \phi_k:\mathbb{R}^d\rightarrow \mathbb{R}` of the PDE 
+The class :class:`colvarsfinder.core.EigenFunctionTask` finds the leading eigenfunctions :math:`\phi_1, \phi_2, \dots, \phi_k:\mathbb{R}^d\rightarrow \mathbb{R}` of infinitesimal generator or transfer operator. 
+
+In the generator case, the generator is assumed to be 
+
+.. math::
+    \mathcal{L} = -\nabla V \cdot \nabla f + \frac{1}{\beta} \Delta f\,,
+
+for a test function :math:`f`, and this class computes the eigenfunctions of PDE 
 
 .. math::
 
     -\mathcal{L}\phi = \lambda \phi,
 
-corresponding to the first :math:`k` eigenvalues :math:`0 < \lambda_1 \le \lambda_2 \le \cdots \le \lambda_k`, where the operator
+corresponding to the first :math:`k` eigenvalues :math:`0 < \lambda_1 \le \lambda_2 \le \cdots \le \lambda_k. This is done by training neural network to learn functions :math:`g_1, g_2, \cdots, g_k:\mathbb{R}^{d_r}\rightarrow \mathbb{R}` using the data-version of the loss 
+
+.. _loss_eigen_generator:
 
 .. math::
-    \mathcal{L} = -\nabla V \cdot \nabla f + \frac{1}{\beta} \Delta f\,,
-
-for a test function :math:`f`. This is done by training neural network to
-learn functions :math:`g_1, g_2, \cdots, g_k:\mathbb{R}^{d_r}\rightarrow \mathbb{R}` using the data-version of the loss 
-
-.. _loss_eigen:
-
-.. math::
-    \sum_{i=1}^k \omega_j  \frac{\beta^{-1} \mathbf{E}_{\mu} \big[(a \nabla f)\cdot \nabla f_i\big]}{\mbox{var}_{\mu} f_i} 
-    + \alpha \sum_{1 \le i \le j \le k} \Big(\mathbf{E}_{\mu} (f_if_j) - \delta_{ij}\Big)^2,
+    \sum_{i=1}^k \omega_i  \frac{\beta^{-1} \mathbf{E}_{\mu} \big[(a \nabla f_i)\cdot \nabla f_i\big]}{\mbox{var}_{\mu} f_i} 
+    + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big(\mathbf{E}_{\mu} (f_{i_1}-\mathbf{E}_{\mu}f_{i_1}), f_{i_2}-\mathbf{E}_{\mu}f_{i_2}) - \delta_{i_1i_2}\Big)^2,
 
 where 
 
     #. :math:`\mathbf{E}_{\mu}` and :math:`\mbox{var}_{\mu}` are the expectation and variance with respect to :math:`\mu`, respectively;
     #. :math:`\alpha` is the penalty parameter;
     #. :math:`a\in \mathbb{R}^{d\times d}` is a diagonal matrix;
-    #. :math:`\omega_1 > \omega_2 > \dots > \omega_k > 0` are :math:`k` positive constants;
+    #. :math:`\omega_1 \ge \omega_2 \ge \dots \ge \omega_k > 0` are :math:`k` positive constants;
     #. :math:`f_i=g_i\circ r, 1\le i \le k`.
+
+In the transfer operator case, assume the lag-time is :math:`\tau` and the transition density at time :math:`\tau` given the state :math:`x` at time zero is :math:`p_\tau(y|x)dy`. The loss function is 
+
+.. _loss_eigen_transfer:
+
+.. math::
+    \frac{1}{2\tau}\sum_{i=1}^k \omega_i  \frac{\mathbf{E}_{x\sim\mu, y\sim p_\tau(\cdot|x)} \big[|f_i(y)- f_i(x)|^2\big]}{\mbox{var}_{\mu} f_i} + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big(\mathbf{E}_{\mu} (f_{i_1}-\mathbf{E}_{\mu}f_{i_1}), f_{i_2}-\mathbf{E}_{\mu}f_{i_2}) - \delta_{i_1i_2}\Big)^2,
+
+In practice, with weighted trajectory data :math:`x^{(1)}, \cdots, x^{(N)}` and assuming :math:`\tau=j\Delta t`, where :math:`\Delta t` is the time interval between two consecutive states, then 
+
+.. math::
+    \mathbf{E}_{x\sim\mu, y\sim p_\tau(\cdot|x)} \big[|f_i(y)- f_i(x)|^2\big] \approx \frac{\sum_{n=1}^{N-j} v_n |f_i(x^{(n+j}) - f_i(x^{(n)})|^2}{\sum_{n=1}^{N-j} v_n}
 
 After training, the collective variables are constructed by 
 
