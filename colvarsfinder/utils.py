@@ -72,7 +72,8 @@ class WeightedTrajectory:
         verbose (bool): print more information if ture
 
     Note: 
-        #. Trajectory data will be loaded from `universe` if it is not None (for MD systems). Otherwise, trajectory data will be loaded from the text file specified by `traj_filename` (for trajectory data of general stochastic systems).  #. When loading trajectory data from text file, each line of the file should contain :math:`d+1` floats, separated by space. The first float is the current time, and the remaining :math:`d` floats are coordinates of the states.
+        #. Trajectory data will be loaded from `universe` if it is not None (for MD systems). Otherwise, trajectory data will be loaded from the text file specified by `traj_filename` (for trajectory data of general stochastic systems).  
+        #. When loading trajectory data from text file, each line of the file should contain :math:`d+1` floats, separated by space. The first float is the current time, and the remaining :math:`d` floats are coordinates of the states.
 
     Note:
         #. Weights are loaded from a CSV file if a filename is provided. They are normalized such that its mean value is one. Then, states in the trajectory data whose weights are not within [min_w, max_w] will be discarded, and weights of the remaining states are normalized again to have mean value one.
