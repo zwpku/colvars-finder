@@ -57,7 +57,7 @@ After training, the collective variables are constructed as
 
 The class :class:`colvarsfinder.core.EigenFunctionTask` finds the leading eigenfunctions :math:`\phi_1, \phi_2, \dots, \phi_k:\mathbb{R}^d\rightarrow \mathbb{R}` of infinitesimal generator or transfer operator. 
 
-#. In the generator case, the generator is assumed to be 
+1. In the generator case, the generator is assumed to be 
 
 .. math::
     \mathcal{L} = -\nabla V \cdot \nabla f + \frac{1}{\beta} \Delta f\,,
@@ -89,7 +89,7 @@ After training, the collective variables are constructed by
 .. math::
     \xi = (g_1\circ r, g_2\circ r, \dots, g_k\circ r)^T.
 
-#. In the transfer operator case, assume the lag-time is :math:`\tau` and the transition density at time :math:`\tau` given the state :math:`x` at time zero is :math:`p_\tau(\cdot|x)`. The loss function used to learn eigenfunctions is 
+2. In the transfer operator case, assume the lag-time is :math:`\tau` and the transition density at time :math:`\tau` given the state :math:`x` at time zero is :math:`p_\tau(\cdot|x)`. The loss function used to learn eigenfunctions is 
 
 .. _loss_eigen_transfer:
 
@@ -112,16 +112,16 @@ The class :class:`colvarsfinder.core.RegAutoEncoderTask` learns regularized auto
 The model consists of an encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and a decoder :math:`f_{dec}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}`, and regularizers :math:`\widetilde{f}_1,\cdots, \widetilde{f}_K:\mathbb{R}^k\rightarrow \mathbb{R}`. The loss involves two lag-times :math:`\tau_1,\tau_2 \ge 0`, as well as several other parameters. When :math:`\tau_2>0`, regularizers correspond to eigenfunctions of transfer operators, and the loss function is 
 
 .. math::
-   & \mathrm{Loss}(f_{enc}, f_{dec}, \{\widetilde{f}_i\}_{1\le i\le K}) 
+   & \mathrm{Loss}(f_{enc}, f_{dec}, \{\widetilde{f}_i\}_{1\le i\le K}) \\
      = & \alpha \mathbf{E}_{x\sim\mu, x'\sim p_{\tau_1}(\cdot|x)} |f_{dec}\circ f_{enc}(r(x))-r(x')|^2 \\
-   +& \gamma_1 \frac{1}{2\tau}\sum_{i=1}^K \omega_i \frac{\mathbf{E}_{x\sim\mu, x'\sim p_{\tau_2}(\cdot|x)} \big[|f_i(x')- f_i(x)|^2\big]}{\mbox{var}_{\mu} f_i} \\
+   +&  \frac{\gamma_1}{2\tau}\sum_{i=1}^K \omega_i \frac{\mathbf{E}_{x\sim\mu, x'\sim p_{\tau_2}(\cdot|x)} \big[|f_i(x')- f_i(x)|^2\big]}{\mbox{var}_{\mu} f_i} \\
    +& \gamma_2 \sum_{1 \le i_1 \le i_2 \le K} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2 \\
    +& \eta_1 \sum_{i=1}^k \mathbf{E}_{\mu} |(\nabla_y f_{enc,i})\circ r|^2 + \eta_2 \sum_{i=1}^k (\mbox{var}_{\mu} (f_{enc,i}\circ r)-1)^2 \\
    +& \eta_3 \Big[\mathbf{E}_{\mu} \Big((f_{enc, i_1}\circ r-\mathbf{E}_{\mu}(f_{enc,i_1}\circ r))(f_{enc,i_2}\circ r-\mathbf{E}_{\mu}(f_{enc, i_2}\circ r))\Big) - \delta_{i_1i_2}\Big]^2\,,
  
 where :math:`f_i = \widetilde{f}_i\circ f_{enc}\circ r`.
 
-When :math:`\tau_2=0`, regularizers correspond to eigenfunctions of generators, and the loss is similar to the one above, except that the second line in the loss above is replaced by 
+When :math:`\tau_2=0`, regularizers correspond to eigenfunctions of generators, and the loss is similar to the one above, except that the third line in the loss above is replaced by 
 
 .. math::
 
