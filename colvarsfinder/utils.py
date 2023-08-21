@@ -134,6 +134,7 @@ class WeightedTrajectory:
             data_block = np.loadtxt(traj_filename)
             self.n_frames = data_block.shape[0]
             self.trajectory = data_block[:,1:]
+            self.dt = data_block[1,0] - data_block[0,0] 
 
         if weight_filename :
 
@@ -392,7 +393,7 @@ def calc_weights(csv_filename, sampling_beta, sys_beta, traj_weight_filename='we
     print (f'Reading potential from: {csv_filename}')
     vec = pd.read_csv(csv_filename)
     # modify the name of the first column
-    vec.rename(columns={vec.columns[0]: 'Time (ps)'}, inplace=True)
+    vec.rename(columns={vec.columns[0]: 'Time'}, inplace=True)
     # show the data 
     print ('\nWhole data:\n', vec.head(8))
 

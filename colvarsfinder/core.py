@@ -259,7 +259,7 @@ class EigenFunctionTask(TrainingTask):
         alpha (float): penalty constant :math:`\alpha` in the loss function
         eig_weights (list of floats): :math:`k` weights :math:`\omega_1 \ge \omega_2 \ge \dots \ge \omega_k > 0` in the loss functions in :ref:`loss_eigenfunction`
         diag_coeff (:external+pytorch:class:`torch.Tensor`): 1D PyTorch tensor of length :math:`d`, which contains diagonal entries of the matrix :math:`a` in the :ref:`loss_eigenfunction`
-        beta (float): :math:`(k_BT)^{-1}` for MD systems
+        beta (float): :math:`(k_BT)^{-1}` for MD systems, only relevant when lag_tau=0 (the case of generator)
         lag_tau (float): lag-time (ns) :math:`\tau` in the loss function. Positive value corresponds to learning eigenfunctions of transfer operator, while zero corresponds to generator.
         learning_rate (float): learning rate
         load_model_filename (str): filename of a trained model, used to restart from a previous training if provided
@@ -502,6 +502,7 @@ class EigenFunctionTask(TrainingTask):
                     # we will compute spatial gradients
                     X.requires_grad_()
                     X_lagged = None
+                    weight_lagged = None
                 else : # transfer operator, time-lagged data are needed
                     X_lagged = self._traj[index + self.lag_idx]
                     weight_lagged = self._weights[index + self.lag_idx]
@@ -871,7 +872,7 @@ class RegAutoEncoderTask(TrainingTask):
         # Forward pass to get output
         out = self.model.forward_ae(self.preprocessing_layer(X))
         # Evaluate loss
-        return (weight * torch.sum((out-self.preprocessing(X_lagged))**2, dim=1)).sum() / weight.sum()
+        return (weight * torch.sum((out-self.preprocessing_layer(X_lagged))**2, dim=1)).sum() / weight.sum()
 
     def reg_enc_grad_loss(self, X, weight):
         r"""
@@ -933,7 +934,7 @@ class RegAutoEncoderTask(TrainingTask):
 
         tot_weight = weight.sum()
 
-        enc = self.model.encoder(self.preprocessing(X))
+        enc = self.model.encoder(self.preprocessing_layer(X))
 
         # Mean and variance evaluated on data
         mean_list = [(enc[:,idx] * weight).sum() / tot_weight for idx in range(self.k)]
