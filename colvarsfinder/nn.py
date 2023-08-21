@@ -119,7 +119,7 @@ class RegAutoEncoder(torch.nn.Module):
     Args:
         e_layer_dims (list of ints): dimensions of encoder's layers 
         d_layer_dims (list of ints): dimensions of decoder's decoder
-        reg_layer_dims (list of ints): dimensions of regularizer's layers 
+        reg_layer_dims (list of ints): dimensions of a regularizer's layers 
         K (int): number of regularizers
         activation: PyTorch nonlinear activation function
 

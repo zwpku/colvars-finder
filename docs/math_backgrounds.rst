@@ -40,9 +40,7 @@ as the preprocessing layer which is a PyTorch neural network module, and :math:`
 
 .. rubric:: Loss function for training autoencoder 
 
-The class :class:`colvarsfinder.core.AutoEncoderTask` trains :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and 
-:math:`f_{dec}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` by the autoencoder
-loss in the *transformed* space :math:`\mathbb{R}^{d_r}`:
+The class :class:`colvarsfinder.core.AutoEncoderTask` trains encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and decoder :math:`f_{dec}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` by the reconstruction loss in the *transformed* space :math:`\mathbb{R}^{d_r}`:
 
 .. math::
 
@@ -79,8 +77,7 @@ corresponding to the first :math:`k` eigenvalues :math:`0 < \lambda_1 \le \lambd
 .. _loss_eigen_generator:
 
 .. math::
-    \sum_{i=1}^k \omega_i  \frac{\beta^{-1} \mathbf{E}_{\mu} \big[(a \nabla f_i)\cdot \nabla f_i\big]}{\mbox{var}_{\mu} f_i} 
-    + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2,
+    \sum_{i=1}^k \omega_i  \frac{\beta^{-1} \mathbf{E}_{\mu} \big[(a \nabla f_i)\cdot \nabla f_i\big]}{\mbox{var}_{\mu} f_i} + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2,
 
 where 
 
@@ -90,20 +87,42 @@ where
     #. :math:`\omega_1 \ge \omega_2 \ge \dots \ge \omega_k > 0` are :math:`k` positive constants;
     #. :math:`f_i=g_i\circ r, 1\le i \le k`.
 
-In the transfer operator case, assume the lag-time is :math:`\tau` and the transition density at time :math:`\tau` given the state :math:`x` at time zero is :math:`p_\tau(\cdot|x)`. The loss function used to learn eigenfunctions is 
-
-.. _loss_eigen_transfer:
-
-.. math::
-    \frac{1}{2\tau}\sum_{i=1}^k \omega_i  \frac{\mathbf{E}_{x\sim\mu, y\sim p_\tau(\cdot|x)} \big[|f_i(y)- f_i(x)|^2\big]}{\mbox{var}_{\mu} f_i} + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2,
-
-In practice, with weighted trajectory data :math:`x^{(1)}, \cdots, x^{(N)}` and assuming :math:`\tau=j\Delta t`, where :math:`\Delta t` is the time interval between two consecutive states and :math:`j` is an integer, then 
-
-.. math::
-    \mathbf{E}_{x\sim\mu, y\sim p_\tau(\cdot|x)} \big[|f_i(y)- f_i(x)|^2\big] \approx \frac{\sum_{l=1}^{N-j} v_l |f_i(x^{(l+j}) - f_i(x^{(l)})|^2}{\sum_{l=1}^{N-j} v_l}\,.
-
 After training, the collective variables are constructed by 
 
 .. math::
     \xi = (g_1\circ r, g_2\circ r, \dots, g_k\circ r)^T.
 
+In the transfer operator case, assume the lag-time is :math:`\tau` and the transition density at time :math:`\tau` given the state :math:`x` at time zero is :math:`p_\tau(\cdot|x)`. The loss function used to learn eigenfunctions is 
+
+.. _loss_eigen_transfer:
+
+.. math::
+    \frac{1}{2\tau}\sum_{i=1}^k \omega_i  \frac{\mathbf{E}_{x\sim\mu, x'\sim p_\tau(\cdot|x)} \big[|f_i(x')- f_i(x)|^2\big]}{\mbox{var}_{\mu} f_i} + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2,
+
+In practice, with weighted trajectory data :math:`x^{(1)}, \cdots, x^{(N)}` and assuming :math:`\tau=j\Delta t`, where :math:`\Delta t` is the time interval between two consecutive states and :math:`j` is an integer, then 
+the first term in the loss function is estimated using 
+
+.. math::
+    \mathbf{E}_{x\sim\mu, x'\sim p_\tau(\cdot|x)} \big[|f_i(x')- f_i(x)|^2\big] \approx \frac{\sum_{l=1}^{n-j} v_l |f_i(x_{l+j}) - f_i(x_{l})|^2}{\sum_{l=1}^{n-j} v_l}\,.
+
+.. _loss_regautoencoder:_
+
+.. rubric:: Loss function for regularized autoencoders
+
+The class :class:`colvarsfinder.core.RegAutoEncoderTask` learns regularized autoencoders using a loss that is the sum of the standard reconstruction loss and the loss for learning eigenfunctions. 
+The model consists of an encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and a decoder :math:`f_{dec}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}`, and regularizers :math:`\widetilde{f}_1,\cdots, \widetilde{f}_K:\mathbb{R}^k\rightarrow \mathbb{R}`. When :math:`\tau_2>0`, regularizers correspond to eigenfunctions of transfer operators, and the loss function is 
+
+.. math::
+      &  \alpha \mathbf{E}_{x\sim\mu, x'\sim p_{\tau_1}(\cdot|x)} |f_{dec}\circ f_{enc}(r(x))-r(x')|^2 \\
+   +& \gamma_1 \frac{1}{2\tau}\sum_{i=1}^k \omega_i \frac{\mathbf{E}_{x\sim\mu, x'\sim p_{\tau_2}(\cdot|x)} \big[|f_i(x')- f_i(x)|^2\big]}{\mbox{var}_{\mu} f_i} \\
+   +& \gamma_2 \sum_{1 \le i_1 \le i_2 \le K} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2 \\
+   +& \eta_1 \sum_{i=1}^k \mathbf{E}_{\mu} |\nabla_y f_{enc,i}|^2 + \eta_2 \sum_{i=1}^k (\mbox{Var}_{\mu} f_{enc,i}-1)^2 \\
+   +& \eta_3 \Big[\mathbf{E}_{\mu} \Big((f_{enc, i_1}-\mathbf{E}_{\mu}f_{enc,i_1})(f_{enc,i_2}-\mathbf{E}_{\mu}f_{enc, i_2})\Big) - \delta_{i_1i_2}\Big]^2\,,
+ 
+where :math:`f_i = \widetilde{f}_i\circ f_enc\circ r`.
+
+When :math:`\tau_2=0`, regularizers correspond to eigenfunctions of generators, and the loss is similar to the one above, except that the second line is replaced by 
+
+.. math::
+
+   & \gamma_1 \sum_{i=1}^k \omega_i  \frac{\beta^{-1} \mathbf{E}_{\mu} \big[(a \nabla f_i)\cdot \nabla f_i\big]}{\mbox{var}_{\mu} f_i} + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2\,.
