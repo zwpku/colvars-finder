@@ -109,20 +109,21 @@ the first term in the loss function is estimated using
 
 .. rubric:: Loss function for regularized autoencoders
 
-The class :class:`colvarsfinder.core.RegAutoEncoderTask` learns regularized autoencoders using a loss that is the sum of the standard reconstruction loss and the loss for learning eigenfunctions. 
-The model consists of an encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and a decoder :math:`f_{dec}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}`, and regularizers :math:`\widetilde{f}_1,\cdots, \widetilde{f}_K:\mathbb{R}^k\rightarrow \mathbb{R}`. When :math:`\tau_2>0`, regularizers correspond to eigenfunctions of transfer operators, and the loss function is 
+The class :class:`colvarsfinder.core.RegAutoEncoderTask` learns regularized autoencoders using a loss that is the sum of the standard reconstruction loss and serveral regularization terms. 
+The model consists of an encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and a decoder :math:`f_{dec}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}`, and regularizers :math:`\widetilde{f}_1,\cdots, \widetilde{f}_K:\mathbb{R}^k\rightarrow \mathbb{R}`. The loss involves two lag-times :math:`\tau_1,\tau_2`, together with several other parameters. When :math:`\tau_2>0`, regularizers correspond to eigenfunctions of transfer operators, and the loss function is 
 
 .. math::
       &  \alpha \mathbf{E}_{x\sim\mu, x'\sim p_{\tau_1}(\cdot|x)} |f_{dec}\circ f_{enc}(r(x))-r(x')|^2 \\
-   +& \gamma_1 \frac{1}{2\tau}\sum_{i=1}^k \omega_i \frac{\mathbf{E}_{x\sim\mu, x'\sim p_{\tau_2}(\cdot|x)} \big[|f_i(x')- f_i(x)|^2\big]}{\mbox{var}_{\mu} f_i} \\
+   +& \gamma_1 \frac{1}{2\tau}\sum_{i=1}^K \omega_i \frac{\mathbf{E}_{x\sim\mu, x'\sim p_{\tau_2}(\cdot|x)} \big[|f_i(x')- f_i(x)|^2\big]}{\mbox{var}_{\mu} f_i} \\
    +& \gamma_2 \sum_{1 \le i_1 \le i_2 \le K} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2 \\
-   +& \eta_1 \sum_{i=1}^k \mathbf{E}_{\mu} |\nabla_y f_{enc,i}|^2 + \eta_2 \sum_{i=1}^k (\mbox{Var}_{\mu} f_{enc,i}-1)^2 \\
-   +& \eta_3 \Big[\mathbf{E}_{\mu} \Big((f_{enc, i_1}-\mathbf{E}_{\mu}f_{enc,i_1})(f_{enc,i_2}-\mathbf{E}_{\mu}f_{enc, i_2})\Big) - \delta_{i_1i_2}\Big]^2\,,
+   +& \eta_1 \sum_{i=1}^k \mathbf{E}_{\mu} |\nabla_y f_{enc,i}\circ r|^2 + \eta_2 \sum_{i=1}^k (\mbox{Var}_{\mu} (f_{enc,i}\circ r)-1)^2 \\
+   +& \eta_3 \Big[\mathbf{E}_{\mu} \Big((f_{enc, i_1}\circ r-\mathbf{E}_{\mu}(f_{enc,i_1}\circ r))(f_{enc,i_2}\circ r-\mathbf{E}_{\mu}(f_{enc, i_2}\circ r))\Big) - \delta_{i_1i_2}\Big]^2\,,
  
-where :math:`f_i = \widetilde{f}_i\circ f_enc\circ r`.
+where :math:`f_i = \widetilde{f}_i\circ f_{enc}\circ r`.
 
 When :math:`\tau_2=0`, regularizers correspond to eigenfunctions of generators, and the loss is similar to the one above, except that the second line is replaced by 
 
 .. math::
 
-   & \gamma_1 \sum_{i=1}^k \omega_i  \frac{\beta^{-1} \mathbf{E}_{\mu} \big[(a \nabla f_i)\cdot \nabla f_i\big]}{\mbox{var}_{\mu} f_i} + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2\,.
+   \gamma_1 \sum_{i=1}^K \omega_i  \frac{\beta^{-1} \mathbf{E}_{\mu} \big[(a \nabla f_i)\cdot \nabla f_i\big]}{\mbox{Var}_{\mu} f_i} + \alpha \sum_{1 \le i_1 \le i_2 \le k} \Big[\mathbf{E}_{\mu} \Big((f_{i_1}-\mathbf{E}_{\mu}f_{i_1})(f_{i_2}-\mathbf{E}_{\mu}f_{i_2})\Big) - \delta_{i_1i_2}\Big]^2\,.
+
