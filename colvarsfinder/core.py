@@ -260,7 +260,7 @@ class EigenFunctionTask(TrainingTask):
         eig_weights (list of floats): :math:`k` weights :math:`\omega_1 \ge \omega_2 \ge \dots \ge \omega_k > 0` in the loss functions in :ref:`loss_eigenfunction`
         diag_coeff (:external+pytorch:class:`torch.Tensor`): 1D PyTorch tensor of length :math:`d`, which contains diagonal entries of the matrix :math:`a` in the :ref:`loss_eigenfunction`
         beta (float): :math:`(k_BT)^{-1}` for MD systems
-        lag_tau (float): lag-time (ns) in the loss function. Positive value corresponds to learning eigenfunctions of transfer operator, while zero corresponds to generator.
+        lag_tau (float): lag-time (ns) :math:`\tau` in the loss function. Positive value corresponds to learning eigenfunctions of transfer operator, while zero corresponds to generator.
         learning_rate (float): learning rate
         load_model_filename (str): filename of a trained model, used to restart from a previous training if provided
         save_model_every_step (int): how often to save model
@@ -283,7 +283,9 @@ class EigenFunctionTask(TrainingTask):
 
     .. note::
 
-        Make sure that lag_tau= :math:`i\Delta t` for some integers :math:`i`, where :math:`\Delta t` is the time interval between two adjacent states in the trajectory data stored in traj_obj. For MD systems, the unit of both lag-times is ns, the same as the unit of :attr:`dt` in :class:`colvarsfinder.utils.WeightedTrajectory`.
+        Make sure that lag_tau= :math:`i\Delta t` for some integers :math:`i`, where :math:`\Delta t` is the time interval between two consecutive states in the trajectory data stored in traj_obj. For MD systems, the unit of the lag-time is ns, the same as the unit of :attr:`dt` in :class:`colvarsfinder.utils.WeightedTrajectory`.
+
+    See :ref:`loss_eigenfunction`.
 
     """
 
@@ -738,10 +740,10 @@ class RegAutoEncoderTask(TrainingTask):
         test_ratio: float in :math:`(0,1)`, ratio of the amount of data used as test data 
         optimizer_name (str): name of optimizer used in training. either 'Adam' or 'SGD' 
         alpha (float): weight of the reconstruction loss
-        gamma (list of two floats): weights in the regularization loss involving eigenfunctions (i.e. variational objective and penalty)
-        eta (list of three floats): weights in the regularization loss, related to constraints on the (squared, integrated) gradient norm, the norm, and the orthogonality of the encoders
-        lag_tau_ae (float): lag-time in the reconstruction loss.  Positive number corresponds to time-lagged autoencoder, while zero for standard autoencoder
-        lag_tau_reg (float): lag-time in the regularization loss involving eigenfunctions. Positive number corresponds to computing eigenfunctions for transfer operator, while zero corresponds to computing eigenfunctions of generator 
+        gamma (list of two floats): weights :math:`\gamma_1,\gamma_2` in the regularization loss involving eigenfunctions (i.e. variational objective and penalty)
+        eta (list of three floats): weights :math:`\eta_1,\eta_2,\eta_3` in the regularization loss, related to constraints on the (squared, integrated) gradient norm, the norm, and the orthogonality of the encoders
+        lag_tau_ae (float): lag-time :math:`\tau_1` in the reconstruction loss.  Positive number corresponds to time-lagged autoencoder, while zero for standard autoencoder
+        lag_tau_reg (float): lag-time :math:`\tau_2` in the regularization loss involving eigenfunctions. Positive number corresponds to computing eigenfunctions for transfer operator, while zero corresponds to computing eigenfunctions of generator 
         beta (float): inverse of temperature, only relevant when the regularization loss corresponds to generator (i.e. lag_tau_reg=0)
         device (:external+pytorch:class:`torch.torch.device`): computing device, either CPU or GPU
         plot_class: plot callback class
@@ -750,7 +752,7 @@ class RegAutoEncoderTask(TrainingTask):
         verbose (bool): print more information if true
         debug_mode (bool): if true, write model to file during the training
         
-    This task trains a regularized autoencoder using the generalized loss discussed in :ref:`loss_autoencoder`. The neural networks representing the encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k` and the decoder :math:`f_{enc}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}` are stored in :attr:`model.encoder` and :attr:`model.decoder`, respectively.
+    This task trains a regularized autoencoder using the generalized loss discussed in :ref:`loss_regautoencoder`. The neural networks representing the encoder :math:`f_{enc}:\mathbb{R}^{d_r}\rightarrow \mathbb{R}^k`, the decoder :math:`f_{enc}:\mathbb{R}^{k}\rightarrow \mathbb{R}^{d_r}`, and the regularizers :math:`\widetilde{f}_1,\cdots, \widetilde{f}_K:\mathbb{R}^k\rightarrow \mathbb{R}` are stored in :attr:`model.encoder`, :attr:`model.decoder`, and :attr:`model.reg`, respectively.
 
     Attributes:
         model: same as the input parameter
@@ -759,7 +761,7 @@ class RegAutoEncoderTask(TrainingTask):
 
     .. note::
 
-        Make sure that lag_tau_ae= :math:`i\Delta t` and lag_tau_reg= :math:`j\Delta t` for some integers :math:`i,j`, where :math:`\Delta t` is the time interval between two adjacent states in the trajectory data stored in traj_obj. For MD systems, the unit of both lag-times is ns, the same as the unit of :attr:`dt` in :class:`colvarsfinder.utils.WeightedTrajectory`.
+        Make sure that lag_tau_ae= :math:`i\Delta t` and lag_tau_reg= :math:`j\Delta t` for some integers :math:`i,j`, where :math:`\Delta t` is the time interval between two consecutive states in the trajectory data stored in traj_obj. For MD systems, the unit of both lag-times is ns, the same as the unit of :attr:`dt` in :class:`colvarsfinder.utils.WeightedTrajectory`.
 
     """
     def __init__(self, traj_obj, 
@@ -795,13 +797,13 @@ class RegAutoEncoderTask(TrainingTask):
 
         #--- prepare the data ---
         self._weights = torch.tensor(traj_obj.weights).to(dtype=torch.get_default_dtype())
-        self._feature_traj = self.preprocessing_layer(torch.tensor(traj_obj.trajectory).to(dtype=torch.get_default_dtype())) # this is a 2d tensor
+        self._traj = torch.tensor(traj_obj.trajectory).to(dtype=torch.get_default_dtype())
 
         self.alpha = alpha
         self.gamma = gamma
         self.eta = eta
         self.num_reg = model.num_reg
-        self.tot_dim = self._feature_traj[0,...].shape[0]
+        self.tot_dim = traj_obj.trajectory[0,...].size 
         self._eps = 1e-5
         self._eig_w = eig_weights
         self._cvec = None
@@ -831,7 +833,7 @@ class RegAutoEncoderTask(TrainingTask):
             self._enc_num_ij_pairs = len(self._enc_ij_list)
 
         # print information of trajectory
-        if self.verbose: print ( '\nShape of trajectory data array:\n {}'.format(self._feature_traj.shape), flush=True )
+        if self.verbose: print ( '\nShape of trajectory data array:\n {}'.format(self._traj.shape), flush=True )
 
     def colvar_model(self):
         r"""
@@ -867,9 +869,9 @@ class RegAutoEncoderTask(TrainingTask):
 
         """
         # Forward pass to get output
-        out = self.model.forward_ae(X)
+        out = self.model.forward_ae(self.preprocessing_layer(X))
         # Evaluate loss
-        return (weight * torch.sum((out-X_lagged)**2, dim=1)).sum() / weight.sum()
+        return (weight * torch.sum((out-self.preprocessing(X_lagged))**2, dim=1)).sum() / weight.sum()
 
     def reg_enc_grad_loss(self, X, weight):
         r"""
@@ -882,12 +884,13 @@ class RegAutoEncoderTask(TrainingTask):
 
         """
 
-        X.requires_grad_()
+        Y = self.preprocessing_layer(X)
+        Y.requires_grad_()
 
         tot_weight = weight.sum()
 
-        enc = self.model.encoder(X) 
-        enc_grad_vec = [torch.autograd.grad(outputs=enc[:,idx].sum(), inputs=X, retain_graph=True, create_graph=True)[0] for idx in range(self.k)]
+        enc = self.model.encoder(Y)
+        enc_grad_vec = [torch.autograd.grad(outputs=enc[:,idx].sum(), inputs=Y, retain_graph=True, create_graph=True)[0] for idx in range(self.k)]
         enc_grad_vec = [enc_grad.reshape((-1, self.tot_dim)) for enc_grad in enc_grad_vec]
         loss = sum([1.0 / tot_weight * torch.sum((enc_grad_vec[idx]**2).sum(dim=1) * weight) for idx in range(self.k)])
 
@@ -906,7 +909,7 @@ class RegAutoEncoderTask(TrainingTask):
 
         tot_weight = weight.sum()
 
-        enc = self.model.encoder(X) 
+        enc = self.model.encoder(self.preprocessing_layer(X))
 
         # Mean and variance evaluated on data
         mean_list = [(enc[:,idx] * weight).sum() / tot_weight for idx in range(self.k)]
@@ -930,7 +933,7 @@ class RegAutoEncoderTask(TrainingTask):
 
         tot_weight = weight.sum()
 
-        enc = self.model.encoder(X) 
+        enc = self.model.encoder(self.preprocessing(X))
 
         # Mean and variance evaluated on data
         mean_list = [(enc[:,idx] * weight).sum() / tot_weight for idx in range(self.k)]
@@ -967,7 +970,7 @@ class RegAutoEncoderTask(TrainingTask):
         tot_weight = weight.sum()
 
         # Forward pass to evaluate eigenfunctions 
-        y = self.model.forward_reg(X) 
+        y = self.model.forward_reg(self.preprocessing_layer(X))
         
         # Mean and variance of eigenfunctions evaluated on data
         mean_list = [(y[:,idx] * weight).sum() / tot_weight for idx in range(self.num_reg)]
@@ -975,7 +978,7 @@ class RegAutoEncoderTask(TrainingTask):
 
         if self.lag_idx > 0 :  # if transfer operator, compute quantities on time-lagged data
             tot_weight_lagged = weight_lagged.sum()
-            y_lagged = self.model.forward_reg(X_lagged)
+            y_lagged = self.model.forward_reg(self.preprocessing_layer(X_lagged))
             mean_list_lagged = [(y_lagged[:,idx] * weight_lagged).sum() / tot_weight_lagged for idx in range(self.num_reg)]
             var_list_lagged = [(y_lagged[:,idx]**2 * weight_lagged).sum() / tot_weight_lagged - mean_list_lagged[idx]**2 for idx in range(self.num_reg)]
 
@@ -1011,9 +1014,9 @@ class RegAutoEncoderTask(TrainingTask):
         """Function to train the model
         """
 
-        ll = self._feature_traj.shape[0] - max(self.lag_idx, self.lag_ae_idx)
+        ll = self._traj.shape[0] - max(self.lag_idx, self.lag_ae_idx)
 
-        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._feature_traj[:ll, :], self._weights[:ll], torch.arange(ll, dtype=torch.long), test_size=self.test_ratio)  
+        X_train, X_test, w_train, w_test, index_train, index_test = train_test_split(self._traj[:ll, :], self._weights[:ll], torch.arange(ll, dtype=torch.long), test_size=self.test_ratio)  
 
         bs_train = min(self.batch_size, X_train.shape[0])
         # method to construct data batches and iterate over them
@@ -1055,7 +1058,7 @@ class RegAutoEncoderTask(TrainingTask):
 
                 if self.alpha > self._eps :
                     if self.lag_ae_idx > 0 :
-                        X_lagged = self._feature_traj[index+self.lag_ae_idx].to(self.device)
+                        X_lagged = self._traj[index+self.lag_ae_idx].to(self.device)
                     else :
                         X_lagged = X
 
@@ -1082,7 +1085,7 @@ class RegAutoEncoderTask(TrainingTask):
 
 
                     if self.lag_idx > 0 :
-                        X_lagged = self._feature_traj[index+self.lag_idx]
+                        X_lagged = self._traj[index+self.lag_idx]
                         weight_lagged = self._weights[index + self.lag_idx]
                     else :
                         X_lagged = None
@@ -1129,7 +1132,7 @@ class RegAutoEncoderTask(TrainingTask):
 
                 if self.alpha > self._eps :
                     if self.lag_ae_idx > 0 :
-                        X_lagged = self._feature_traj[index+self.lag_ae_idx].to(self.device)
+                        X_lagged = self._traj[index+self.lag_ae_idx].to(self.device)
                     else :
                         X_lagged = X
 
@@ -1139,7 +1142,7 @@ class RegAutoEncoderTask(TrainingTask):
 
                 if self.gamma[0] + self.gamma[1] > self._eps :
                     if self.lag_idx > 0 :
-                        X_lagged = self._feature_traj[index+self.lag_idx]
+                        X_lagged = self._traj[index+self.lag_idx]
                         weight_lagged = self._weights[index + self.lag_idx]
                     else :
                         X_lagged = None
