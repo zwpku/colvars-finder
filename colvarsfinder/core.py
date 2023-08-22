@@ -53,7 +53,7 @@ import copy
 from abc import ABC, abstractmethod
 from tqdm import tqdm
 
-from colvarsfinder.nn import RegModel
+from colvarsfinder.nn import RegModel, EigenFunctions, AutoEncoder, RegAutoEncoder
 
 from openmm import unit
 
@@ -260,7 +260,7 @@ class EigenFunctionTask(TrainingTask):
         eig_weights (list of floats): :math:`k` weights :math:`\omega_1 \ge \omega_2 \ge \dots \ge \omega_k > 0` in the loss functions in :ref:`loss_eigenfunction`
         diag_coeff (:external+pytorch:class:`torch.Tensor`): 1D PyTorch tensor of length :math:`d`, which contains diagonal entries of the matrix :math:`a` in the :ref:`loss_eigenfunction`
         beta (float): :math:`(k_BT)^{-1}` for MD systems, only relevant when lag_tau=0 (the case of generator)
-        lag_tau (float): lag-time (ns) :math:`\tau` in the loss function. Positive value corresponds to learning eigenfunctions of transfer operator, while zero corresponds to generator.
+        lag_tau (float): lag-time :math:`\tau` in the loss function. Positive value corresponds to learning eigenfunctions of transfer operator, while zero corresponds to generator. The unit is ns for MD systems.
         learning_rate (float): learning rate
         load_model_filename (str): filename of a trained model, used to restart from a previous training if provided
         save_model_every_step (int): how often to save model
@@ -280,7 +280,8 @@ class EigenFunctionTask(TrainingTask):
         model: same as the input parameter
         preprocessing_layer: same as the input parameter pp_layer
         loss_list: list of loss values evaluated on training data and test data during the training
-
+        train_loss_df (:external+pandas:class:`pandas.DataFrame`): dataframe of training loss for each epoch
+        test_loss_df (:external+pandas:class:`pandas.DataFrame`): dataframe of test loss for each epoch
     .. note::
 
         Make sure that lag_tau= :math:`i\Delta t` for some integers :math:`i`, where :math:`\Delta t` is the time interval between two consecutive states in the trajectory data stored in traj_obj. For MD systems, the unit of the lag-time is ns, the same as the unit of :attr:`dt` in :class:`colvarsfinder.utils.WeightedTrajectory`.
@@ -314,6 +315,9 @@ class EigenFunctionTask(TrainingTask):
                         debug_mode=True):
 
         super().__init__( traj_obj, pp_layer,  model,  model_path, learning_rate, load_model_filename, save_model_every_step, k, batch_size, num_epochs, test_ratio, optimizer_name, device, plot_class, plot_frequency, verbose, debug_mode )
+
+        assert isinstance(model, EigenFunctions), 'model must be an object of the class EigenFunctions'
+        assert k == len(model.eigen_funcs), f'number of cv ({k}) must equal the number of eigenfunctions ({len(model.eigen_funcs)})'
 
         self.model = model
 
@@ -517,7 +521,7 @@ class EigenFunctionTask(TrainingTask):
                 # updating parameters
                 self.optimizer.step()
 
-            if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
+            if self.save_model_every_step > 0 and epoch % self.save_model_every_step == self.save_model_every_step - 1 :
                 self.save_model(epoch)
                 if loss < min_loss:
                     min_loss = loss
@@ -555,6 +559,12 @@ class EigenFunctionTask(TrainingTask):
             for i, name in enumerate(loss_names):
                 self.writer.add_scalar('%s/train' % name, mean_train_loss[i], epoch)
                 self.writer.add_scalar('%s/test' % name, mean_test_loss[i], epoch)
+        
+        train_loss_epoch= torch.cat([torch.mean(ll[0],dim=0,keepdim=True) for ll in self.loss_list])
+        self.train_loss_df = pd.DataFrame(train_loss_epoch, columns=loss_names)
+        test_loss_epoch= torch.cat([torch.mean(ll[1],dim=0,keepdim=True) for ll in self.loss_list])
+        self.test_loss_df = pd.DataFrame(test_loss_epoch, columns=loss_names)
+
 
 class AutoEncoderTask(TrainingTask):
     r"""Class for training autoencoders using reconstruction loss.
@@ -593,6 +603,8 @@ class AutoEncoderTask(TrainingTask):
         model: same as the input parameter
         preprocessing_layer: same as the input parameter pp_layer
         loss_list: list of loss values on training data and test data during the training
+        train_loss_df (:external+pandas:class:`pandas.DataFrame`): dataframe of training loss for each epoch
+        test_loss_df (:external+pandas:class:`pandas.DataFrame`): dataframe of test loss for each epoch
 
     """
     def __init__(self, traj_obj, 
@@ -613,6 +625,8 @@ class AutoEncoderTask(TrainingTask):
                         debug_mode=True):
 
         super().__init__( traj_obj, pp_layer,  model, model_path, learning_rate, load_model_filename, save_model_every_step, model.encoded_dim, batch_size, num_epochs, test_ratio, optimizer_name, device, plot_class, plot_frequency, verbose, debug_mode)
+
+        assert isinstance(model, AutoEncoder), 'model must be an object of the class AutoEncoder'
 
         self.init_model_and_optimizer()
 
@@ -697,7 +711,7 @@ class AutoEncoderTask(TrainingTask):
                 # Updating parameters
                 self.optimizer.step()
 
-            if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
+            if self.save_model_every_step > 0 and epoch % self.save_model_every_step == self.save_model_every_step - 1 :
                 self.save_model(epoch)
                 if loss < min_loss:
                     min_loss = loss
@@ -723,6 +737,11 @@ class AutoEncoderTask(TrainingTask):
 
             self.writer.add_scalar('Loss/train', torch.mean(torch.tensor(train_loss)), epoch)
             self.writer.add_scalar('Loss/test', torch.mean(torch.tensor(test_loss)), epoch)
+
+        train_loss_epoch= torch.cat([torch.mean(ll[0],dim=0,keepdim=True) for ll in self.loss_list])
+        self.train_loss_df = pd.DataFrame(train_loss_epoch, columns=['loss'])
+        test_loss_epoch= torch.cat([torch.mean(ll[1],dim=0,keepdim=True) for ll in self.loss_list])
+        self.test_loss_df = pd.DataFrame(test_loss_epoch, columns=['loss'])
 
 class RegAutoEncoderTask(TrainingTask):
     r"""Class for training regularized autoencoders.
@@ -759,6 +778,8 @@ class RegAutoEncoderTask(TrainingTask):
         model: same as the input parameter
         preprocessing_layer: same as the input parameter pp_layer
         loss_list: list of loss values evaluated on training data and test data during the training
+        train_loss_df (:external+pandas:class:`pandas.DataFrame`): dataframe of training loss for each epoch
+        test_loss_df (:external+pandas:class:`pandas.DataFrame`): dataframe of test loss for each epoch
 
     .. note::
 
@@ -794,6 +815,7 @@ class RegAutoEncoderTask(TrainingTask):
 
         self.init_model_and_optimizer()
 
+        assert isinstance(model, RegAutoEncoder), 'model must be an object of the class RegAutoEncoder'
         assert model.num_reg == len(eig_weights), 'number of weights does not match the number of eigenfunctions!'
 
         #--- prepare the data ---
@@ -1114,7 +1136,7 @@ class RegAutoEncoderTask(TrainingTask):
                 # Updating parameters
                 self.optimizer.step()
 
-            if epoch % self.save_model_every_step == self.save_model_every_step - 1 :
+            if self.save_model_every_step > 0 and epoch % self.save_model_every_step == self.save_model_every_step - 1 :
                 self.save_model(epoch)
                 if loss < min_loss:
                     min_loss = loss
@@ -1188,4 +1210,9 @@ class RegAutoEncoderTask(TrainingTask):
             for i, name in enumerate(loss_names):
                 self.writer.add_scalar('%s/train' % name, mean_train_loss[i], epoch)
                 self.writer.add_scalar('%s/test' % name, mean_test_loss[i], epoch)
+
+        train_loss_epoch= torch.cat([torch.mean(ll[0],dim=0,keepdim=True) for ll in self.loss_list])
+        self.train_loss_df = pd.DataFrame(train_loss_epoch, columns=loss_names)
+        test_loss_epoch= torch.cat([torch.mean(ll[1],dim=0,keepdim=True) for ll in self.loss_list])
+        self.test_loss_df = pd.DataFrame(test_loss_epoch, columns=loss_names)
 
