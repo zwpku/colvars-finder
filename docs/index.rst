@@ -8,13 +8,10 @@ Documentation of ColVars-Finder
 
 This package implements methods for finding collective variables of dynamical systems by training artificial neural networks.
 
-.. note::
-
-   The package is under development.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
+   :caption: Contents
 
    installation
    quickstart

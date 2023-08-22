@@ -9,14 +9,13 @@ This module implements the function :meth:`integrate_md_langevin` and :meth:`int
 
 .. rubric:: Typical usage
 
-The main purpose of this module is to prepare training data for the training tasks in the module :mod:`colvarsfinder.core`.
+The main purpose of this module is to prepare training data for training tasks in the module :mod:`colvarsfinder.core`.
 Assume that the invariant distribution of the system is :math:`\mu` at temperature :math:`T`.
-Direct simulation becomes inefficient, when there is metastability in system's dynamics.
-To mitigate the difficulty due to metastability, one can use this module in the following two steps.
+One can use this module in the following two steps.
 
-    #. Run :meth:`integrate_md_langevin` or :meth:`integrate_sde_overdamped` to sample states :math:`(x_l)_{1\le l \le n}` of the (biased) system at a slightly high temperature :math:`T_{sim} > T`; 
+    #. Run :meth:`integrate_md_langevin` or :meth:`integrate_sde_overdamped` to sample states :math:`(x_l)_{1\le l \le n}` of the (biased) system at a possibly higher temperature :math:`T_{sim} \ge T`; 
 
-    #. Use :meth:`calc_weights` to generate a CSV file that contains the weights :math:`(w_l)_{1\le l \le n}` of the sampled states. 
+    #. Use :meth:`calc_weights` to generate a CSV file that contains the weights :math:`(v_l)_{1\le l \le n}` of the sampled states. 
 
 
 The weights are calculated in a way such that one can approximate the distribution :math:`\mu` using the biased data :math:`(x_l)_{1\le l \le n}` by
@@ -26,7 +25,7 @@ The weights are calculated in a way such that one can approximate the distributi
 
 for test functions :math:`f`, where :math:`d` is the dimension of the system.
 
-Using the states and weights generated in the above two steps, one can construct the class :class:`WeightedTrajectory`, which can then be passed on to training task classes in the module :mod:`colvarsfinder.core`.
+Using the states and weights generated in the above two steps, one can construct the class :class:`WeightedTrajectory`, which can then be passed on to the training task classes in the module :mod:`colvarsfinder.core`.
 
 Classes
 -------
@@ -73,11 +72,11 @@ class WeightedTrajectory:
         verbose (bool): print more information if ture
 
     Note: 
-        #. Trajectory data will be loaded from `universe` if it is not None. Otherwise, trajectory data will be loaded from the text file specified by `traj_filename`.
-        #. When loading trajectory data from text file, each line of the file should contain :math:`d+1` floats, separated by a space. The first float is the current time, and the remaining :math:`d` floats are coordinates of the states.
+        #. Trajectory data will be loaded from `universe` if it is not None (for MD systems). Otherwise, trajectory data will be loaded from the text file specified by `traj_filename` (for trajectory data of general stochastic systems).  
+        #. When loading trajectory data from text file, each line of the file should contain :math:`d+1` floats, separated by space. The first float is the current time, and the remaining :math:`d` floats are coordinates of the states.
 
     Note:
-        #. Weights are loaded from a CSV file if a filename is provided. The weights are normalized such that its mean value is one. Then, states in the trajectory data whose weights are not within [min_w, max_w] will be discarded, and weights of the remaining states are normalized again to have mean value one.
+        #. Weights are loaded from a CSV file if a filename is provided. They are normalized such that its mean value is one. Then, states in the trajectory data whose weights are not within [min_w, max_w] will be discarded, and weights of the remaining states are normalized again to have mean value one.
         #. All weights will be set to one, if weight_filename is None.
 
     Raises:
@@ -90,7 +89,7 @@ class WeightedTrajectory:
             
         n_frames (int): number of states in the trajectory
         weights (1d numpy array): weights of states
-        dt (float): time (ps) between two consecutive states 
+        dt (float): time between two consecutive states. The unit is ns for MD systems.
     """
     def __init__(self, universe=None, input_ag=None, traj_filename=None, weight_filename=None, min_w=0.0, max_w=float("inf"), verbose=True):
         
@@ -99,7 +98,7 @@ class WeightedTrajectory:
             if verbose: print ('\nloading trajectory to numpy array...', end='') 
 
             if input_ag is None :
-                input_atom_indices = univser.atoms.ix
+                input_atom_indices = universe.atoms.ix
             else :
                 input_atom_indices = input_ag.ix
 
@@ -110,8 +109,8 @@ class WeightedTrajectory:
 
             self.n_frames = universe.trajectory.n_frames
 
-            # unit: ps
-            self.dt = universe.trajectory.dt
+            # unit: ns
+            self.dt = universe.trajectory.dt * 1e-3
 
             # print information of trajectory
             if verbose: 
@@ -136,6 +135,7 @@ class WeightedTrajectory:
             data_block = np.loadtxt(traj_filename)
             self.n_frames = data_block.shape[0]
             self.trajectory = data_block[:,1:]
+            self.dt = data_block[1,0] - data_block[0,0] 
 
         if weight_filename :
 
@@ -254,8 +254,7 @@ def integrate_md_langevin(pdb, system, integrator, n_steps, sampling_output_path
 
     del simulation
 
-def integrate_sde_overdamped(pot_obj, n_steps, sampling_output_path, X0=None, pre_steps=0, step_size=0.01,
-        traj_txt_filename='traj.txt', csv_filename='output.csv', report_interval=100, report_interval_stdout=100):
+def integrate_sde_overdamped(pot_obj, n_steps, sampling_output_path, X0=None, pre_steps=0, step_size=0.01, traj_txt_filename='traj.txt', csv_filename='output.csv', report_interval=100, report_interval_stdout=100):
     r"""Generate trajectory data by integrating overdamped Langevin dynamics using Euler-Maruyama scheme.
 
     Args:
@@ -263,7 +262,7 @@ def integrate_sde_overdamped(pot_obj, n_steps, sampling_output_path, X0=None, pr
         n_steps (int): total number of steps to integrate
         sampling_output_path (str): directory to save results
         X0 (1d numpy array of float): initial position. Random initial position will be used if it is None.
-        pre_steps (int): number of warm-up steps to run before integrating the system for n_steps
+        pre_steps (int): number of warm-up steps to run before integrating the system
         step_size (float): step-size to integrate SDE, unit: dimensionless
         traj_txt_filename (str): filename of the text file to save trajectory 
         csv_filename (str): filename of the CSV file to store statistics
@@ -272,7 +271,7 @@ def integrate_sde_overdamped(pot_obj, n_steps, sampling_output_path, X0=None, pr
 
     Note: 
        #. `pot_obj` is an object of a class which has attributes `dim` (int), `beta` (positive real), and memeber functions `V` and `gradV`.
-       #. The first line of the CSV file contains titles of the output statistics. Each of the following lines records the time and energy of the system, separated by a comma.  An example of the output CSV file is given below.
+       #. The first line of the CSV file (output) contains titles of the output statistics. Each of the following lines records the time and energy of the system, separated by a comma.  An example of the output CSV file is given below.
 
     Example:
         Below is an example of `pot_obj`.
@@ -395,7 +394,7 @@ def calc_weights(csv_filename, sampling_beta, sys_beta, traj_weight_filename='we
     print (f'Reading potential from: {csv_filename}')
     vec = pd.read_csv(csv_filename)
     # modify the name of the first column
-    vec.rename(columns={vec.columns[0]: 'Time (ps)'}, inplace=True)
+    vec.rename(columns={vec.columns[0]: 'Time'}, inplace=True)
     # show the data 
     print ('\nWhole data:\n', vec.head(8))
 
